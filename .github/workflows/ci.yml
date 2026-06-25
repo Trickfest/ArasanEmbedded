@@ -1,0 +1,41 @@
+name: ArasanEmbedded CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: SwiftPM Package
+    runs-on: macos-26
+    timeout-minutes: 25
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Validate package manifest
+        run: swift package dump-package
+
+      - name: Build package
+        run: swift build
+
+      - name: Run package tests
+        run: swift test
+
+      - name: Run CLI smoke test
+        run: swift run arasan-smoke --depth 1
+
+      - name: Build iOS simulator package product
+        run: |
+          xcodebuild \
+            -scheme ArasanEmbedded \
+            -configuration Debug \
+            -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=latest' \
+            -derivedDataPath .build/xcode-ios \
+            build
