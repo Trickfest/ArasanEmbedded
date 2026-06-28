@@ -11,10 +11,13 @@ needs a permissively licensed in-process engine.
 
 ## Status
 
-This repository is currently private and is being built to be Swift Package
-Index-submittable later. It includes a root `Package.swift`, SPI metadata,
-semantic-version-ready layout, tests, CI, and product documentation, but it has
-not been submitted to the Swift Package Index.
+This repository is a SwiftPM-first embedded Arasan package for iOS, iPadOS, and
+macOS. It includes a root `Package.swift`, SPI metadata, semantic-versioned
+releases, package tests, CI, and product documentation.
+
+`ArasanEmbedded` is suitable for Swift Package Index submission. SPI indexing
+requires the GitHub repository to be public and a semantic version tag to be
+available on the default branch.
 
 ## Requirements
 
@@ -25,10 +28,10 @@ not been submitted to the Swift Package Index.
 
 ## Installation
 
-After this repository is public, add it through SwiftPM or Xcode:
+Add the package through SwiftPM or Xcode:
 
 ```swift
-.package(url: "https://github.com/Trickfest/ArasanEmbedded.git", from: "0.1.0")
+.package(url: "https://github.com/Trickfest/ArasanEmbedded.git", from: "1.0.0")
 ```
 
 Then depend on the library product:
