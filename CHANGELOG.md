@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.2 - 2026-06-29
 
 - Fix embedded search-time command polling so `stop` is observed while Arasan is
   actively searching through the wrapper's C++ stream input.
