@@ -84,8 +84,9 @@ tablebase probing.
 ## Opening Book
 
 Opening books make the engine play precomputed opening moves instead of
-searching from the first move. `ArasanEmbedded` leaves this off by default so
-tests and examples are deterministic.
+searching from the first move. `ArasanEmbedded` leaves opening books disabled by
+default so normal tests and examples do not depend on an external `book.bin` or
+book-move selection policy. Apps can opt in explicitly when they want book play.
 
 Enable a caller-provided Arasan `book.bin` file:
 

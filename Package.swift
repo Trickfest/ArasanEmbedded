@@ -101,7 +101,10 @@ let package = Package(
         ),
         .testTarget(
             name: "ArasanEmbeddedTests",
-            dependencies: ["ArasanEmbedded"]
+            dependencies: ["ArasanEmbedded"],
+            resources: [
+                .copy("../../Resources/OpeningBooks/book.bin"),
+            ]
         ),
     ],
     cxxLanguageStandard: .cxx17

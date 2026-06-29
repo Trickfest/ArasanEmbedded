@@ -30,6 +30,7 @@ The package tests live in `Tests/ArasanEmbeddedTests`.
 
 - default configuration uses the bundled NNUE file
 - opening-book options build the expected UCI commands
+- a tiny generated `book.bin` fixture supplies a real opening-book best move
 - Syzygy tablebase options build the expected UCI commands
 - missing NNUE/book/tablebase paths are rejected before engine start
 - invalid tablebase probe depth is rejected
@@ -60,6 +61,12 @@ The regression test sends `ucinewgame` and waits for `readyok` between
 independent puzzle positions. That keeps the tactical checks deterministic and
 avoids carrying search state from one puzzle into the next.
 
+`ArasanExternalAssetIntegrationTests.swift` covers optional downloaded assets:
+
+- it is skipped by normal `swift test`
+- when enabled, it verifies the downloaded `KQvK` Syzygy fixture is present
+- it starts Arasan with tablebases enabled and asserts real `tbhits` output
+
 ## CLI Smoke
 
 `arasan-smoke` is a quick one-shot command-line validation tool. It starts the
@@ -76,6 +83,25 @@ swift run arasan-smoke --tablebases /path/to/syzygy --probe-depth 4 --fen "<endg
 ```
 
 Use this when you want the fastest real-engine sanity check.
+
+## Opening Book Fixture
+
+The default XCTest suite includes a real opening-book integration test. The
+fixture lives in `Resources/OpeningBooks`:
+
+- `fixture.pgn`: a tiny repo-owned PGN whose first move is `1. a3`
+- `book.bin`: the generated Arasan opening book committed for offline tests
+
+The test configures Arasan with `OwnBook` and the fixture book, searches the
+starting position, and expects `bestmove a2a3`. The move is intentionally odd,
+which makes it clear that the result came from the book rather than normal
+search.
+
+Regenerate the binary fixture after changing the PGN:
+
+```sh
+Scripts/regenerate-opening-book-fixture.sh
+```
 
 ## CLI Soak
 
@@ -115,6 +141,49 @@ Longer local soaks are useful before release candidates:
 ```sh
 swift run arasan-soak --iterations 100 --depth 8 --ready-each
 swift run arasan-soak --iterations 200 --movetime 250 --delay-ms 100
+```
+
+## Optional External Asset Tests
+
+The default release gate does not download anything. To exercise real external
+Syzygy tablebase files, run:
+
+```sh
+Scripts/test-external-assets.sh
+```
+
+That script:
+
+1. reads `Resources/ExternalAssets/syzygy_kqvk.tsv`
+2. downloads `KQvK.rtbw` and `KQvK.rtbz` from the Lichess Syzygy mirror when
+   they are missing or checksum-invalid
+3. verifies byte counts and SHA-256 checksums
+4. stores the files in `.build/test-assets/syzygy`
+5. runs only `ArasanExternalAssetIntegrationTests`
+
+The current download is tiny:
+
+- `KQvK.rtbw`: 272 bytes
+- `KQvK.rtbz`: 5,392 bytes
+
+Subsequent runs reuse the cached files. To force a fresh download, remove:
+
+```sh
+rm -rf .build/test-assets/syzygy
+```
+
+You can use a different directory by setting `ARASAN_SYZYGY_FIXTURE_DIR`:
+
+```sh
+ARASAN_SYZYGY_FIXTURE_DIR=/path/to/syzygy Scripts/test-external-assets.sh
+```
+
+To run the XCTest directly after assets already exist:
+
+```sh
+ARASAN_RUN_EXTERNAL_ASSET_TESTS=1 \
+ARASAN_SYZYGY_PATH=/path/to/syzygy \
+swift test --filter ArasanExternalAssetIntegrationTests
 ```
 
 ## Lichess Corpus

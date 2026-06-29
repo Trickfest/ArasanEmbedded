@@ -78,6 +78,23 @@ The wrapper validates that a directory exists. It does not validate that the
 tablebase set is complete, checksum-valid, or useful for a specific position.
 Arasan reports missing or incomplete tablebase content through normal UCI output.
 
+## Optional Test Fixture
+
+`ArasanEmbedded` includes an optional Syzygy integration test that downloads the
+small `KQvK` WDL and DTZ files into `.build/test-assets/syzygy`, verifies their
+published sizes and SHA-256 checksums, and confirms Arasan reports real
+tablebase hits.
+
+Run it with:
+
+```sh
+Scripts/test-external-assets.sh
+```
+
+The script is opt-in so normal `swift test` remains offline. See
+`Docs/Testing.md` for cache location, environment variables, and direct XCTest
+commands.
+
 ## CLI Example
 
 ```sh

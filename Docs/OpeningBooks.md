@@ -6,10 +6,11 @@ default.
 
 ## Why Disabled By Default
 
-Opening books are useful for game play, but they make tests less deterministic:
-the engine can pick a book move without searching. For a reusable embedded
-engine package, the default should prove engine startup, NNUE loading, search,
-and `bestmove` behavior without hidden opening policy.
+Opening books are useful for game play, but normal tests and examples should not
+depend on an external `book.bin` or book-move selection policy. For a reusable
+embedded engine package, the default should prove engine startup, NNUE loading,
+search, and `bestmove` behavior without hidden opening policy. Apps can opt in
+explicitly when they want book play.
 
 ## Enabling A Book
 
@@ -56,3 +57,22 @@ validates the file before starting the engine. Missing explicit book files throw
 If `useOpeningBook` is true and no path is provided, Arasan owns the default
 path lookup. That mode is intended for advanced users who know where Arasan will
 look for `book.bin`.
+
+## Test Fixture
+
+`Resources/OpeningBooks` contains a tiny repo-owned PGN and generated
+`book.bin`. The default XCTest suite uses that book to prove that Arasan honors
+`OwnBook` and `BookPath` with a real engine run.
+
+The fixture's first move is `1. a3`, so the expected book response from the
+starting position is:
+
+```text
+bestmove a2a3
+```
+
+Regenerate the binary fixture with:
+
+```sh
+Scripts/regenerate-opening-book-fixture.sh
+```

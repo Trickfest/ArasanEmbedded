@@ -31,6 +31,12 @@ swift run arasan-soak --iterations 5 --movetime 500
 xcodebuild -scheme ArasanEmbedded -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=latest' -derivedDataPath .build/xcode-ios build
 ```
 
+Optional external asset coverage downloads and caches a tiny Syzygy fixture:
+
+```sh
+Scripts/test-external-assets.sh
+```
+
 ## Vendored Arasan
 
 Arasan is vendored from `https://github.com/jdart1/arasan-chess`.

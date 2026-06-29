@@ -3,6 +3,7 @@
 .swiftpm/
 DerivedData/
 build/
+ThirdParty/Arasan/bin/
 *.xcuserstate
 xcuserdata/
 *.result

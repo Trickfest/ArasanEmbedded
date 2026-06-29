@@ -20,6 +20,8 @@
 - Add the short CLI soak run to CI and the documented release gate.
 - Add `Docs/Testing.md` as the canonical guide for the test suite, CLI smoke,
   CLI soak, CI coverage, and release validation.
+- Add a real opening-book integration fixture and optional external Syzygy
+  tablebase integration test with cached, checksum-verified downloads.
 
 ## 0.1.0 - 2026-06-24
 
