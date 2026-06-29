@@ -58,6 +58,10 @@ let package = Package(
             name: "arasan-smoke",
             targets: ["ArasanSmoke"]
         ),
+        .executable(
+            name: "arasan-soak",
+            targets: ["ArasanSoak"]
+        ),
     ],
     targets: [
         .target(
@@ -89,6 +93,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "ArasanSmoke",
+            dependencies: ["ArasanEmbedded"]
+        ),
+        .executableTarget(
+            name: "ArasanSoak",
             dependencies: ["ArasanEmbedded"]
         ),
         .testTarget(

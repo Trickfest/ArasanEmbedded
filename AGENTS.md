@@ -10,7 +10,10 @@ but it is SwiftPM-first and uses Arasan's MIT-licensed engine code.
 - `Sources/CArasanEmbedded/` - Objective-C++ bridge and Arasan UCI shim.
 - `Sources/ArasanEmbedded/` - Swift-facing public API.
 - `Sources/ArasanSmoke/` - command-line smoke test executable.
+- `Sources/ArasanSoak/` - command-line soak test executable.
 - `Tests/ArasanEmbeddedTests/` - package tests.
+- `Resources/Soak/` - curated Lichess-derived CC0 positions for soak and
+  regression tests.
 - `ThirdParty/Arasan/` - vendored Arasan engine source, selected docs, current
   NNUE network file, and Fathom Syzygy probing source from upstream.
 - `Docs/` - product documentation and advanced runtime asset guidance.
@@ -24,6 +27,7 @@ swift package dump-package
 swift build
 swift test
 swift run arasan-smoke --depth 1
+swift run arasan-soak --iterations 5 --movetime 500
 xcodebuild -scheme ArasanEmbedded -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=latest' -derivedDataPath .build/xcode-ios build
 ```
 

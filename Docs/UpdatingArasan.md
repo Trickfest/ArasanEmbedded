@@ -65,10 +65,4 @@ the wrapper streams.
 
 ## 5. Validate
 
-```sh
-swift package dump-package
-swift build
-swift test
-swift run arasan-smoke --depth 1
-xcodebuild -scheme ArasanEmbedded -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=latest' -derivedDataPath .build/xcode-ios build
-```
+Run the full local release gate from `Docs/Testing.md`.

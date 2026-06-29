@@ -31,6 +31,9 @@ jobs:
       - name: Run CLI smoke test
         run: swift run arasan-smoke --depth 1
 
+      - name: Run short CLI soak test
+        run: swift run arasan-soak --iterations 5 --movetime 250
+
       - name: Build iOS simulator package product
         run: |
           xcodebuild \

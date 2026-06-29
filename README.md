@@ -144,26 +144,11 @@ setoption name Use tablebases value true
 
 See `Docs/Tablebases.md` for iOS/macOS storage guidance and failure behavior.
 
-## CLI Smoke Tool
+## Testing
 
-The package includes `arasan-smoke` for local validation and examples.
-
-```sh
-swift run arasan-smoke --depth 1
-swift run arasan-smoke --fen "8/8/8/8/8/8/4K3/4k3 w - - 0 1" --depth 4
-swift run arasan-smoke --book /path/to/book.bin --depth 8
-swift run arasan-smoke --tablebases /path/to/syzygy --probe-depth 4 --fen "<endgame fen>"
-```
-
-## Build And Test
-
-```sh
-swift package dump-package
-swift build
-swift test
-swift run arasan-smoke --depth 1
-xcodebuild -scheme ArasanEmbedded -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=latest' -derivedDataPath .build/xcode-ios build
-```
+See `Docs/Testing.md` for the full local release gate, XCTest suite structure,
+`arasan-smoke`, `arasan-soak`, CI coverage, and the Lichess-derived regression
+corpus.
 
 ## Relationship To SwiftChessTools
 

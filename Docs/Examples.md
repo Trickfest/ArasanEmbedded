@@ -62,6 +62,17 @@ let configuration = ArasanEngine.Configuration(
 )
 ```
 
+## CLI Soak
+
+Use `arasan-soak` when you want repeated non-GUI validation:
+
+```sh
+swift run arasan-soak --iterations 5 --movetime 500
+```
+
+See `Docs/Testing.md` for the full test-suite guide and additional soak
+examples.
+
 ## SwiftUI Harness Pattern
 
 Use an observable model that owns one engine instance, appends raw UCI lines to

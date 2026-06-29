@@ -12,6 +12,14 @@
   and Syzygy tablebase configuration.
 - Suppress a third-party Fathom conversion warning at the wrapper boundary
   without modifying vendored source.
+- Add `ArasanSoakRunner` and the `arasan-soak` CLI for repeated non-GUI engine
+  validation.
+- Add a curated Lichess CC0 puzzle corpus for soak and search regression tests.
+- Expand package tests with lifecycle contract coverage and Lichess-backed
+  tactical regression coverage.
+- Add the short CLI soak run to CI and the documented release gate.
+- Add `Docs/Testing.md` as the canonical guide for the test suite, CLI smoke,
+  CLI soak, CI coverage, and release validation.
 
 ## 0.1.0 - 2026-06-24
 
