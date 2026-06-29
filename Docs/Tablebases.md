@@ -92,8 +92,8 @@ Scripts/test-external-assets.sh
 ```
 
 The script is opt-in so normal `swift test` remains offline. See
-`Docs/Testing.md` for cache location, environment variables, and direct XCTest
-commands.
+`Docs/Testing.md` for cache location, environment variables, and direct Swift
+Testing commands.
 
 ## CLI Example
 

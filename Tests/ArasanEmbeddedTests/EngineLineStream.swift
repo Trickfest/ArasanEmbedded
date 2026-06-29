@@ -1,8 +1,7 @@
 import Foundation
 
-actor AssetTestLineStream {
+actor EngineLineStream {
     private var lines: [String] = []
-    private var continuations: [CheckedContinuation<Void, Never>] = []
 
     var lineCount: Int {
         lines.count
@@ -10,11 +9,10 @@ actor AssetTestLineStream {
 
     func append(_ line: String) {
         lines.append(line)
-        let pending = continuations
-        continuations.removeAll()
-        for continuation in pending {
-            continuation.resume()
-        }
+    }
+
+    func allLines() -> [String] {
+        lines
     }
 
     func waitForLine(
@@ -39,23 +37,17 @@ actor AssetTestLineStream {
         after startIndex: Int,
         timeout: Duration
     ) async throws -> String {
-        try await withThrowingTaskGroup(of: String.self) { group in
-            group.addTask {
-                while true {
-                    if let line = await self.matchingLine(containing: needle, prefix: prefix, after: startIndex) {
-                        return line
-                    }
-                    await self.waitForNewLine()
-                }
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+
+        while clock.now < deadline {
+            if let line = matchingLine(containing: needle, prefix: prefix, after: startIndex) {
+                return line
             }
-            group.addTask {
-                try await Task.sleep(for: timeout)
-                throw AssetTestTimeoutError()
-            }
-            let line = try await group.next()!
-            group.cancelAll()
-            return line
+            try await Task.sleep(for: .milliseconds(10))
         }
+
+        throw EngineLineStreamTimeoutError()
     }
 
     private func matchingLine(containing needle: String?, prefix: String?, after startIndex: Int) -> String? {
@@ -74,11 +66,6 @@ actor AssetTestLineStream {
         }
     }
 
-    private func waitForNewLine() async {
-        await withCheckedContinuation { continuation in
-            continuations.append(continuation)
-        }
-    }
 }
 
-private struct AssetTestTimeoutError: Error {}
+private struct EngineLineStreamTimeoutError: Error {}

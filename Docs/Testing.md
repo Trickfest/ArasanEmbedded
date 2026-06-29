@@ -18,28 +18,33 @@ swift run arasan-soak --iterations 5 --movetime 500
 xcodebuild -scheme ArasanEmbedded -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=latest' -derivedDataPath .build/xcode-ios build
 ```
 
-`swift test` is the XCTest suite. The two CLI commands exercise the package as a
-consumer would, and the iOS simulator build verifies that the SwiftPM package
-continues to build for iOS/iPadOS.
+`swift test` runs the Swift Testing suite. The two CLI commands exercise the
+package as a consumer would, and the iOS simulator build verifies that the
+SwiftPM package continues to build for iOS/iPadOS.
 
-## XCTest Suite
+## Swift Testing Suite
 
 The package tests live in `Tests/ArasanEmbeddedTests`.
 
-`ArasanEmbeddedTests.swift` covers configuration and basic engine behavior:
+`ArasanConfigurationTests.swift` covers wrapper configuration:
 
 - default configuration uses the bundled NNUE file
 - opening-book options build the expected UCI commands
-- a tiny generated `book.bin` fixture supplies a real opening-book best move
 - Syzygy tablebase options build the expected UCI commands
 - missing NNUE/book/tablebase paths are rejected before engine start
 - invalid tablebase probe depth is rejected
+
+`LichessCorpusTests.swift` covers the curated Lichess corpus:
+
+- the corpus has the expected row count and theme coverage
+- every row has source/provenance fields
+- every row has normalized FEN and allowed UCI moves
+
+`ArasanEngineIntegrationTests.swift` covers real engine behavior:
+
 - UCI startup reaches `uciok` and `readyok`
 - a short real search returns `bestmove`
 - the process-wide single-engine policy is enforced
-
-`ArasanEngineContractTests.swift` covers wrapper lifecycle contracts:
-
 - startup emits identity, option, `uciok`, and `readyok` lines
 - repeated `isready` probes return `readyok`
 - `bestmove` lines have valid UCI move syntax
@@ -50,22 +55,21 @@ The package tests live in `Tests/ArasanEmbeddedTests`.
 - back-to-back searches return best moves
 - UCI `stop` during a bounded search returns a valid best move promptly
 - `ArasanSoakRunner` completes a short in-process run
-
-`ArasanLichessRegressionTests.swift` covers the curated Lichess corpus:
-
-- the corpus has the expected row count and theme coverage
-- every row has source/provenance fields
+- a tiny generated `book.bin` fixture supplies a real opening-book best move
 - every normalized position returns an allowed move at depth 4
+- optional downloaded Syzygy fixtures produce real `tbhits` output
 
-The regression test sends `ucinewgame` and waits for `readyok` between
-independent puzzle positions. That keeps the tactical checks deterministic and
-avoids carrying search state from one puzzle into the next.
+The engine integration suite is marked `.serialized` because Arasan is exposed
+as one process-wide embedded engine instance. Corpus and configuration tests can
+still run independently, but engine-starting tests intentionally do not overlap.
 
-`ArasanExternalAssetIntegrationTests.swift` covers optional downloaded assets:
+The Lichess-backed regression test sends `ucinewgame` and waits for `readyok`
+between independent puzzle positions. That keeps the tactical checks
+deterministic and avoids carrying search state from one puzzle into the next.
 
-- it is skipped by normal `swift test`
-- when enabled, it verifies the downloaded `KQvK` Syzygy fixture is present
-- it starts Arasan with tablebases enabled and asserts real `tbhits` output
+The optional Syzygy test is skipped by normal `swift test`. Enable it through
+`Scripts/test-external-assets.sh` after downloading or verifying the fixture
+files.
 
 ## CLI Smoke
 
@@ -86,8 +90,8 @@ Use this when you want the fastest real-engine sanity check.
 
 ## Opening Book Fixture
 
-The default XCTest suite includes a real opening-book integration test. The
-fixture lives in `Resources/OpeningBooks`:
+The default Swift Testing suite includes a real opening-book integration test.
+The fixture lives in `Resources/OpeningBooks`:
 
 - `fixture.pgn`: a tiny repo-owned PGN whose first move is `1. a3`
 - `book.bin`: the generated Arasan opening book committed for offline tests
@@ -159,7 +163,7 @@ That script:
    they are missing or checksum-invalid
 3. verifies byte counts and SHA-256 checksums
 4. stores the files in `.build/test-assets/syzygy`
-5. runs only `ArasanExternalAssetIntegrationTests`
+5. runs only `downloadedKQvKSyzygyFixtureProducesTablebaseHits`
 
 The current download is tiny:
 
@@ -178,12 +182,12 @@ You can use a different directory by setting `ARASAN_SYZYGY_FIXTURE_DIR`:
 ARASAN_SYZYGY_FIXTURE_DIR=/path/to/syzygy Scripts/test-external-assets.sh
 ```
 
-To run the XCTest directly after assets already exist:
+To run the Swift Testing test directly after assets already exist:
 
 ```sh
 ARASAN_RUN_EXTERNAL_ASSET_TESTS=1 \
 ARASAN_SYZYGY_PATH=/path/to/syzygy \
-swift test --filter ArasanExternalAssetIntegrationTests
+swift test --filter downloadedKQvKSyzygyFixtureProducesTablebaseHits
 ```
 
 ## Lichess Corpus

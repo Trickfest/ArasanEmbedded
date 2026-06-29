@@ -147,9 +147,9 @@ See `Docs/Tablebases.md` for iOS/macOS storage guidance and failure behavior.
 
 ## Testing
 
-See `Docs/Testing.md` for the full local release gate, XCTest suite structure,
-`arasan-smoke`, `arasan-soak`, CI coverage, and the Lichess-derived regression
-corpus.
+See `Docs/Testing.md` for the full local release gate, Swift Testing suite
+structure, `arasan-smoke`, `arasan-soak`, CI coverage, and the Lichess-derived
+regression corpus.
 
 ## Relationship To SwiftChessTools
 

@@ -16,5 +16,5 @@ utility. Regenerate it with:
 Scripts/regenerate-opening-book-fixture.sh
 ```
 
-The binary is committed because it is tiny and keeps the default XCTest suite
-offline and deterministic.
+The binary is committed because it is tiny and keeps the default Swift Testing
+suite offline and deterministic.

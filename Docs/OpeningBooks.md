@@ -61,8 +61,8 @@ look for `book.bin`.
 ## Test Fixture
 
 `Resources/OpeningBooks` contains a tiny repo-owned PGN and generated
-`book.bin`. The default XCTest suite uses that book to prove that Arasan honors
-`OwnBook` and `BookPath` with a real engine run.
+`book.bin`. The default Swift Testing suite uses that book to prove that Arasan
+honors `OwnBook` and `BookPath` with a real engine run.
 
 The fixture's first move is `1. a3`, so the expected book response from the
 starting position is:

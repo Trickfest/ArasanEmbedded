@@ -22,6 +22,8 @@
   CLI soak, CI coverage, and release validation.
 - Add a real opening-book integration fixture and optional external Syzygy
   tablebase integration test with cached, checksum-verified downloads.
+- Migrate package tests from XCTest to Swift Testing, with engine-starting
+  coverage isolated in one serialized suite.
 
 ## 0.1.0 - 2026-06-24
 

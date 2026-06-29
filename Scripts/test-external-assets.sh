@@ -10,4 +10,6 @@ cd "$ROOT_DIR"
 
 ARASAN_RUN_EXTERNAL_ASSET_TESTS=1 \
 ARASAN_SYZYGY_PATH="$SYZYGY_DIR" \
-swift test --filter ArasanExternalAssetIntegrationTests
+swift test --filter downloadedKQvKSyzygyFixtureProducesTablebaseHits
+
+printf 'External asset Swift Testing suite passed.\n'
