@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Fix embedded search-time command polling so `stop` is observed while Arasan is
+  actively searching through the wrapper's C++ stream input.
+- Stop joining the engine thread only after it exits, avoiding a detached native
+  thread reading from wrapper input objects that have already been destroyed.
+- Add lifecycle regression coverage for stopping an active deep search and
+  starting a fresh `ArasanEngine` instance.
+
 ## 1.0.1 - 2026-06-29
 
 - Fix arm64 NEON sparse NNUE accumulation so Arasan reports material

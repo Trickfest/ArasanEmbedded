@@ -52,9 +52,24 @@ Input::Input()
 }
 
 bool Input::checkInput(std::vector<std::string> &cmds, std::mutex &mtx) {
-#ifdef _WIN32
-    DWORD nchar;
-    if (PeekNamedPipe(GetStdHandle(STD_INPUT_HANDLE), NULL, 0,
+#ifdef ARASAN_EMBEDDED_STREAM_INPUT
+    if (std::cin.rdbuf() == nullptr || std::cin.rdbuf()->in_avail() <= 0) {
+        return false;
+    }
+
+    std::string cmd;
+    if (std::getline(std::cin, cmd)) {
+        if (cmd.length()) {
+            std::unique_lock<std::mutex> lock(mtx);
+            cmds.push_back(cmd);
+        }
+        return true;
+    }
+    return false;
+#else
+	#ifdef _WIN32
+	    DWORD nchar;
+	    if (PeekNamedPipe(GetStdHandle(STD_INPUT_HANDLE), NULL, 0,
                       NULL, &nchar, NULL)) {
          for (unsigned i = 0; i < nchar && buf_index < BUF_SIZE; i++) {
             buf[buf_index++] = getc(stdin);
@@ -97,8 +112,9 @@ bool Input::checkInput(std::vector<std::string> &cmds, std::mutex &mtx) {
             buf_index = processCmdChars(buf + buf_index, bytes, cmds, mtx);
             return true;
         }
-    }
-    return false;
+	    }
+	    return false;
+	#endif
 #endif
 }
 
@@ -137,4 +153,3 @@ bool Input::readInput(std::vector<std::string> &cmds, std::mutex &mtx)
         return false;
     }
 }
-

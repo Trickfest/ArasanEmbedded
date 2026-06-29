@@ -1,10 +1,8 @@
 #import "AEEngine.h"
 
 #include <atomic>
-#include <chrono>
 #include <condition_variable>
 #include <deque>
-#include <future>
 #include <memory>
 #include <mutex>
 #include <ostream>
@@ -40,6 +38,16 @@ public:
         return true;
     }
 
+    bool tryPop(std::string &command) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (commands_.empty()) {
+            return false;
+        }
+        command = std::move(commands_.front());
+        commands_.pop_front();
+        return true;
+    }
+
     void close() {
         {
             std::lock_guard<std::mutex> lock(mutex_);
@@ -62,6 +70,19 @@ public:
     }
 
 protected:
+    std::streamsize showmanyc() override {
+        if (gptr() < egptr()) {
+            return egptr() - gptr();
+        }
+
+        if (!queue_.tryPop(current_)) {
+            return 0;
+        }
+
+        prepareCurrentCommand();
+        return egptr() - gptr();
+    }
+
     int_type underflow() override {
         if (gptr() < egptr()) {
             return traits_type::to_int_type(*gptr());
@@ -71,16 +92,20 @@ protected:
             return traits_type::eof();
         }
 
+        prepareCurrentCommand();
+        return traits_type::to_int_type(*gptr());
+    }
+
+private:
+    void prepareCurrentCommand() {
         if (current_.empty() || current_.back() != '\n') {
             current_.push_back('\n');
         }
 
         char *start = current_.data();
         setg(start, start, start + current_.size());
-        return traits_type::to_int_type(*gptr());
     }
 
-private:
     CommandQueue &queue_;
     std::string current_;
     char placeholder_[1];
@@ -145,8 +170,6 @@ bool gActiveEngine = false;
     std::unique_ptr<std::thread> _thread;
     std::mutex _sendMutex;
     std::atomic<bool> _running;
-    std::promise<void> _donePromise;
-    std::future<void> _doneFuture;
 }
 
 - (instancetype)initWithLineHandler:(AELineHandler)handler {
@@ -180,8 +203,6 @@ bool gActiveEngine = false;
     }
 
     _queue = std::make_unique<CommandQueue>();
-    _donePromise = std::promise<void>();
-    _doneFuture = _donePromise.get_future();
     _running.store(true);
 
     __weak __typeof__(self) weakSelf = self;
@@ -221,12 +242,7 @@ bool gActiveEngine = false;
     }
 
     if (_thread && _thread->joinable()) {
-        if (_doneFuture.valid()
-            && _doneFuture.wait_for(std::chrono::seconds(3)) == std::future_status::timeout) {
-            _thread->detach();
-        } else {
-            _thread->join();
-        }
+        _thread->join();
     }
 
     _thread.reset();
@@ -257,7 +273,6 @@ bool gActiveEngine = false;
     if (_queue) {
         _queue->close();
     }
-    _donePromise.set_value();
     {
         std::lock_guard<std::mutex> lock(gActiveEngineMutex);
         gActiveEngine = false;

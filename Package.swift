@@ -77,6 +77,7 @@ let package = Package(
                 .define("SYZYGY_TBS"),
                 .define("SIMD"),
                 .define("NEON"),
+                .define("ARASAN_EMBEDDED_STREAM_INPUT"),
                 .define("ARASAN_VERSION", to: "embedded-master-ac0b2c14"),
                 .define("NETWORK", to: "arasanv8-20260622.nnue"),
             ],

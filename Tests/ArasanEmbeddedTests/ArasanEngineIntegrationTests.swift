@@ -276,6 +276,50 @@ struct ArasanEngineIntegrationTests {
     }
 
     @Test
+    func stoppingWrapperDuringActiveSearchAllowsFreshEngineStart() async throws {
+        let firstStream = EngineLineStream()
+        var firstEngine: ArasanEngine? = ArasanEngine { line in
+            Task {
+                await firstStream.append(line)
+            }
+        }
+        try #require(firstEngine).start()
+
+        _ = try await firstStream.waitForLine(prefix: "uciok", timeout: .seconds(10))
+        _ = try await firstStream.waitForLine(prefix: "readyok", timeout: .seconds(10))
+
+        firstEngine?.sendCommand("position startpos")
+        firstEngine?.sendCommand("go depth 30")
+        try await Task.sleep(for: .milliseconds(50))
+
+        let stopStart = Date()
+        firstEngine?.stop()
+        firstEngine = nil
+        let stopElapsed = Date().timeIntervalSince(stopStart)
+
+        #expect(stopElapsed < 10.0)
+
+        let secondStream = EngineLineStream()
+        let secondEngine = ArasanEngine { line in
+            Task {
+                await secondStream.append(line)
+            }
+        }
+        try secondEngine.start()
+        defer { secondEngine.stop() }
+
+        _ = try await secondStream.waitForLine(prefix: "uciok", timeout: .seconds(10))
+        _ = try await secondStream.waitForLine(prefix: "readyok", timeout: .seconds(10))
+
+        secondEngine.sendCommand("position startpos")
+        secondEngine.sendCommand("go depth 1")
+
+        let line = try await secondStream.waitForLine(prefix: "bestmove", timeout: .seconds(10))
+        let move = try #require(Self.bestmoveToken(from: line))
+        #expect(Self.isValidBestmoveToken(move))
+    }
+
+    @Test
     func soakRunnerCompletesShortRun() async {
         let configuration = ArasanSoakRunner.Configuration(
             positions: [
