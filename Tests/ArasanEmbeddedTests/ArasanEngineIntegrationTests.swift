@@ -90,6 +90,44 @@ struct ArasanEngineIntegrationTests {
     }
 
     @Test
+    func materialImbalanceProducesLargeCentipawnScores() async throws {
+        let (engine, stream) = try await startEngine()
+        defer { engine.stop() }
+
+        let cases = [
+            (
+                name: "white up queen",
+                fen: "rnb1kbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+                scoreRange: 800...10_000
+            ),
+            (
+                name: "black up queen",
+                fen: "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNB1KBNR w KQkq - 0 1",
+                scoreRange: -10_000 ... -800
+            ),
+        ]
+
+        for testCase in cases {
+            let resetIndex = await stream.lineCount
+            engine.sendCommand("ucinewgame")
+            engine.sendCommand("isready")
+            _ = try await stream.waitForLine(prefix: "readyok", after: resetIndex, timeout: .seconds(10))
+
+            let startIndex = await stream.lineCount
+            engine.sendCommand("position fen \(testCase.fen)")
+            engine.sendCommand("go depth 1")
+            _ = try await stream.waitForLine(prefix: "bestmove", after: startIndex, timeout: .seconds(10))
+
+            let lines = await stream.allLines()
+            let score = try #require(Self.lastCentipawnScore(in: lines.dropFirst(startIndex)))
+            #expect(
+                testCase.scoreRange.contains(score),
+                "\(testCase.name) expected score in \(testCase.scoreRange), got \(score)"
+            )
+        }
+    }
+
+    @Test
     func startAndStopArePredictable() throws {
         let engine = ArasanEngine { _ in }
 
@@ -427,6 +465,23 @@ struct ArasanEngineIntegrationTests {
             return ["q", "r", "b", "n"].contains(characters[4])
         }
         return true
+    }
+
+    private static func lastCentipawnScore<S: Sequence>(in lines: S) -> Int? where S.Element == String {
+        lines.compactMap(centipawnScore).last
+    }
+
+    private static func centipawnScore(in line: String) -> Int? {
+        let parts = line.split(separator: " ")
+        guard
+            let scoreIndex = parts.firstIndex(of: "score"),
+            parts.indices.contains(parts.index(scoreIndex, offsetBy: 2)),
+            parts[parts.index(after: scoreIndex)] == "cp"
+        else {
+            return nil
+        }
+
+        return Int(parts[parts.index(scoreIndex, offsetBy: 2)])
     }
 
     private static func tablebaseHits(in line: String) -> Int {

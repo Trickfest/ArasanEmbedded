@@ -63,6 +63,16 @@ Compare `ThirdParty/Arasan/src/arasanx.cpp` with
 match Arasan's initialization sequence while redirecting UCI input/output to
 the wrapper streams.
 
-## 5. Validate
+## 5. Reconcile Local Vendored Adjustments
+
+Check `Docs/Provenance.md` for local vendored-source adjustments. At minimum,
+verify whether upstream still needs the arm64 NEON `dpbusd_epi32` accumulator
+fix in `ThirdParty/Arasan/src/nnue/simddefs.h`.
+
+If upstream has not fixed the same issue, reapply the local adjustment before
+validation. If upstream has fixed it, remove the local patch note from
+`Docs/Provenance.md`.
+
+## 6. Validate
 
 Run the full local release gate from `Docs/Testing.md`.

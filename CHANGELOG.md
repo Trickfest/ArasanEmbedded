@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.1 - 2026-06-29
+
+- Fix arm64 NEON sparse NNUE accumulation so Arasan reports material
+  imbalances correctly on Apple Silicon.
+- Add a material-imbalance integration regression test that verifies large
+  positive and negative centipawn scores.
+- Document the local vendored Arasan NEON adjustment and update the vendored
+  refresh process to preserve or reconcile it.
+- Refresh the README relationship note now that `SwiftChessDemo` can run with
+  either `StockfishEmbedded` or `ArasanEmbedded`.
+
 ## 1.0.0 - 2026-06-28
 
 - Prepare the first public `ArasanEmbedded` release.

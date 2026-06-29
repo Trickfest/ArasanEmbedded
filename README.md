@@ -161,8 +161,9 @@ the engine wrapper responsible for game state or UI.
 ## Relationship To SwiftChessDemo
 
 `SwiftChessDemo` shows how a real app can combine Swift chess rules/UI with an
-embedded engine. Today it uses `StockfishEmbedded`; `ArasanEmbedded` is intended
-to provide a permissively licensed alternative with a similar integration shape.
+embedded engine. It can run games with either `StockfishEmbedded` or
+`ArasanEmbedded`, which makes it the best reference app for seeing this package
+used in a realistic SwiftUI chess-playing experience.
 
 ## Licensing
 

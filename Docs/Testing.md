@@ -48,6 +48,8 @@ The package tests live in `Tests/ArasanEmbeddedTests`.
 - startup emits identity, option, `uciok`, and `readyok` lines
 - repeated `isready` probes return `readyok`
 - `bestmove` lines have valid UCI move syntax
+- material-imbalance searches produce large centipawn scores with the expected
+  sign
 - start and stop are predictable and idempotent where expected
 - commands before start and after stop are ignored safely
 - `uci` can be issued again after startup

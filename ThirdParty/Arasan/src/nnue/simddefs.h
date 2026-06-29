@@ -134,14 +134,17 @@ static inline int32_t hsum32(int32x4_t reg) {
 // must be templatized because shift must be a compile-time constant
 template<unsigned shift>
 static inline vec32_t vec_rshift32(vec32_t x) { return vshrq_n_s32(x, shift); }
-static inline vec32_t dpbusd_epi32(vec32_t sum, vec8_t a, vec8_t b) {
+static inline void dpbusd_epi32(vec_t &sum, vec8_t a, vec8_t b) {
 #if defined(__aarch64__)
-    return vdotq_s32(sum, a, b);
+    vec32_t sum32 = vreinterpretq_s32_s16(sum);
+    sum = vreinterpretq_s16_s32(vdotq_s32(sum32, a, b));
 #else
     // emulate x86 multipy-add instruction with NEON
     int16x8_t prod_lo = vmull_s8(vget_low_s8(vreinterpretq_s8_u8(a)), vget_low_s8(b));
     int16x8_t prod_hi = vmull_s8(vget_high_s8(vreinterpretq_s8_u8(a)), vget_high_s8(b));
-    return vaddq_s32(sum, vaddq_s32(vpaddlq_s16(prod_lo), vpaddlq_s16(prod_hi)));
+    vec32_t sum32 = vreinterpretq_s32_s16(sum);
+    sum32 = vaddq_s32(sum32, vaddq_s32(vpaddlq_s16(prod_lo), vpaddlq_s16(prod_hi)));
+    sum = vreinterpretq_s16_s32(sum32);
 #endif
 }
 

@@ -35,6 +35,20 @@ The package currently bundles this Arasan NNUE file as a SwiftPM resource:
 ThirdParty/Arasan/network/arasanv8-20260622.nnue
 ```
 
+## Local Vendored Adjustments
+
+`ArasanEmbedded` carries a small arm64 NEON NNUE fix in the vendored source:
+
+- `ThirdParty/Arasan/src/nnue/simddefs.h`: the NEON `dpbusd_epi32` helper now
+  mutates the accumulator by reference, matching the x86 helper contract used by
+  callers.
+- `ThirdParty/Arasan/src/nnue/simd.h`: the NEON build marks an x86-only
+  nonzero-group constant as intentionally unused to keep package builds clean.
+
+The `dpbusd_epi32` fix is required for correct sparse NNUE scoring on Apple
+Silicon. Without it, Arasan's sparse layer discards most product accumulation
+and returns evaluations that are dominated by bias terms.
+
 ## Excluded Upstream Material
 
 This package intentionally does not vendor Arasan's GUI, GUI fonts, Visual
