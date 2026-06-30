@@ -18,6 +18,7 @@ namespace {
 class ScopedStandardStreams {
 public:
     ScopedStandardStreams(std::istream &input, std::ostream &output) {
+        previousInputTie_ = std::cin.tie(nullptr);
         previousInput_ = std::cin.rdbuf(input.rdbuf());
         previousOutput_ = std::cout.rdbuf(output.rdbuf());
         previousError_ = std::cerr.rdbuf(output.rdbuf());
@@ -27,12 +28,14 @@ public:
         std::cin.rdbuf(previousInput_);
         std::cout.rdbuf(previousOutput_);
         std::cerr.rdbuf(previousError_);
+        std::cin.tie(previousInputTie_);
     }
 
 private:
     std::streambuf *previousInput_ = nullptr;
     std::streambuf *previousOutput_ = nullptr;
     std::streambuf *previousError_ = nullptr;
+    std::ostream *previousInputTie_ = nullptr;
 };
 
 } // namespace

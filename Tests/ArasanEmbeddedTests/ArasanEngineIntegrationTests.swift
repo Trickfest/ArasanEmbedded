@@ -320,6 +320,58 @@ struct ArasanEngineIntegrationTests {
     }
 
     @Test
+    func repeatedStopsDuringSearchReturnBestmoves() async throws {
+        let (engine, stream) = try await startEngine()
+        defer { engine.stop() }
+
+        for attempt in 1...5 {
+            let startIndex = await stream.lineCount
+            engine.sendCommand("position startpos")
+            engine.sendCommand("go movetime 500")
+            try await Task.sleep(for: .milliseconds(50))
+
+            let stopStart = Date()
+            engine.sendCommand("stop")
+            let line = try await stream.waitForLine(prefix: "bestmove", after: startIndex, timeout: .seconds(3))
+            let elapsed = Date().timeIntervalSince(stopStart)
+            let move = try #require(Self.bestmoveToken(from: line))
+
+            #expect(elapsed < 3.0, "Stop attempt \(attempt) took too long: \(elapsed)s")
+            #expect(Self.isValidBestmoveToken(move), "Unexpected bestmove token on attempt \(attempt): \(move)")
+        }
+    }
+
+    @Test
+    func repeatedActiveSearchStopsAllowFreshEngineStarts() async throws {
+        for attempt in 1...5 {
+            do {
+                let stream = EngineLineStream()
+                let engine = ArasanEngine { line in
+                    Task {
+                        await stream.append(line)
+                    }
+                }
+
+                try engine.start()
+                defer { engine.stop() }
+
+                _ = try await stream.waitForLine(prefix: "uciok", timeout: .seconds(10))
+                _ = try await stream.waitForLine(prefix: "readyok", timeout: .seconds(10))
+
+                engine.sendCommand("position startpos")
+                engine.sendCommand("go depth 30")
+                try await Task.sleep(for: .milliseconds(50))
+
+                let stopStart = Date()
+                engine.stop()
+                let elapsed = Date().timeIntervalSince(stopStart)
+
+                #expect(elapsed < 10.0, "Fresh-start stop attempt \(attempt) took too long: \(elapsed)s")
+            }
+        }
+    }
+
+    @Test
     func soakRunnerCompletesShortRun() async {
         let configuration = ArasanSoakRunner.Configuration(
             positions: [

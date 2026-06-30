@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.0.3 - 2026-06-29
+
+- Detach `std::cin` from `std::cout` while Arasan runs against wrapper-provided
+  streams, avoiding flushes against redirected output during engine shutdown
+  and restart.
+- Add repeated stop/search lifecycle coverage for active searches and fresh
+  engine starts.
+
 ## 1.0.2 - 2026-06-29
 
 - Fix embedded search-time command polling so `stop` is observed while Arasan is
