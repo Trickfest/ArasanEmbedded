@@ -37,13 +37,15 @@ ThirdParty/Arasan/network/arasanv8-20260622.nnue
 
 ## Local Vendored Adjustments
 
-`ArasanEmbedded` carries one wrapper-specific adjustment in the vendored
-source:
+`ArasanEmbedded` carries wrapper-specific adjustments in the vendored source:
 
 - `ThirdParty/Arasan/src/input.cpp`: when `ARASAN_EMBEDDED_STREAM_INPUT` is
   defined, command polling reads from redirected C++ streams instead of polling
   platform stdin file descriptors. This lets the in-process wrapper feed UCI
   commands without running Arasan as a separate process.
+- `ThirdParty/Arasan/src/hash.h`: mate-range hash values are clamped at
+  `Constants::MATE` bounds when storing scores. This avoids a debug assertion
+  abort if search produces a mate-bound score at a deeper ply.
 
 The arm64 NEON `dpbusd_epi32` sparse NNUE accumulation fix is now included
 upstream in Arasan commit `58c58cf9`, so this package no longer carries that

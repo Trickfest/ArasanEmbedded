@@ -100,9 +100,19 @@ let package = Package(
             name: "ArasanSoak",
             dependencies: ["ArasanEmbedded"]
         ),
+        .target(
+            name: "CArasanEmbeddedTestSupport",
+            path: "Tests/CArasanEmbeddedTestSupport",
+            sources: ["ArasanHashTesting.cpp"],
+            publicHeadersPath: "include",
+            cxxSettings: [
+                .headerSearchPath("../../ThirdParty/Arasan/src"),
+                .define("_64BIT"),
+            ]
+        ),
         .testTarget(
             name: "ArasanEmbeddedTests",
-            dependencies: ["ArasanEmbedded"],
+            dependencies: ["ArasanEmbedded", "CArasanEmbeddedTestSupport"],
             resources: [
                 .copy("../../Resources/OpeningBooks/book.bin"),
             ]

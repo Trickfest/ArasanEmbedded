@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0.5 - 2026-07-02
+
+- Clamp Arasan mate-score hash conversion at mate bounds instead of aborting in
+  debug builds when a mate-range score is stored from a deeper ply.
+
 ## 1.0.4 - 2026-07-02
 
 - Update vendored Arasan source to upstream `master` commit

@@ -40,6 +40,12 @@ The package tests live in `Tests/ArasanEmbeddedTests`.
 - every row has source/provenance fields
 - every row has normalized FEN and allowed UCI moves
 
+`ArasanHashRegressionTests.swift` covers low-level search-score storage:
+
+- mate-range scores clamp at the positive and negative mate bounds when stored
+  in the hash table
+- normal non-mate scores and the invalid-score sentinel are preserved
+
 `ArasanEngineIntegrationTests.swift` covers real engine behavior:
 
 - UCI startup reaches `uciok` and `readyok`
