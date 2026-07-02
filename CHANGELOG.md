@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.4 - 2026-07-02
+
+- Update vendored Arasan source to upstream `master` commit
+  `36774cd7581685491ad0e0f77ec7b3a0a5763376`.
+- Pick up Arasan's upstream arm64 NEON sparse NNUE accumulation fix, replacing
+  the previous local vendored patch for that issue.
+- Preserve and document the package-specific embedded stream-input polling path
+  used by the in-process UCI wrapper.
+- Refresh Arasan provenance and vendored-update documentation for the new
+  snapshot.
+
 ## 1.0.3 - 2026-06-29
 
 - Detach `std::cin` from `std::cout` while Arasan runs against wrapper-provided

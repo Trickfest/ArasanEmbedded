@@ -9,13 +9,13 @@ https://github.com/jdart1/arasan-chess
 Current vendored upstream commit:
 
 ```text
-ac0b2c14fdcaec44812407ca3af795c41c6460ac
+36774cd7581685491ad0e0f77ec7b3a0a5763376
 ```
 
 Commit message:
 
 ```text
-Fix for large hash sizes: cast hash index to size_t, not int.
+Windows Makefile fix
 ```
 
 ## Included Upstream Material
@@ -37,17 +37,17 @@ ThirdParty/Arasan/network/arasanv8-20260622.nnue
 
 ## Local Vendored Adjustments
 
-`ArasanEmbedded` carries a small arm64 NEON NNUE fix in the vendored source:
+`ArasanEmbedded` carries one wrapper-specific adjustment in the vendored
+source:
 
-- `ThirdParty/Arasan/src/nnue/simddefs.h`: the NEON `dpbusd_epi32` helper now
-  mutates the accumulator by reference, matching the x86 helper contract used by
-  callers.
-- `ThirdParty/Arasan/src/nnue/simd.h`: the NEON build marks an x86-only
-  nonzero-group constant as intentionally unused to keep package builds clean.
+- `ThirdParty/Arasan/src/input.cpp`: when `ARASAN_EMBEDDED_STREAM_INPUT` is
+  defined, command polling reads from redirected C++ streams instead of polling
+  platform stdin file descriptors. This lets the in-process wrapper feed UCI
+  commands without running Arasan as a separate process.
 
-The `dpbusd_epi32` fix is required for correct sparse NNUE scoring on Apple
-Silicon. Without it, Arasan's sparse layer discards most product accumulation
-and returns evaluations that are dominated by bias terms.
+The arm64 NEON `dpbusd_epi32` sparse NNUE accumulation fix is now included
+upstream in Arasan commit `58c58cf9`, so this package no longer carries that
+fix as a local vendored adjustment.
 
 ## Excluded Upstream Material
 

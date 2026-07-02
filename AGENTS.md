@@ -43,7 +43,7 @@ Arasan is vendored from `https://github.com/jdart1/arasan-chess`.
 The current vendored upstream commit is:
 
 ```text
-ac0b2c14fdcaec44812407ca3af795c41c6460ac
+36774cd7581685491ad0e0f77ec7b3a0a5763376
 ```
 
 The Fathom Syzygy probing submodule is materialized as normal files under

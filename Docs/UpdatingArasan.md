@@ -65,13 +65,15 @@ the wrapper streams.
 
 ## 5. Reconcile Local Vendored Adjustments
 
-Check `Docs/Provenance.md` for local vendored-source adjustments. At minimum,
-verify whether upstream still needs the arm64 NEON `dpbusd_epi32` accumulator
-fix in `ThirdParty/Arasan/src/nnue/simddefs.h`.
+Check `Docs/Provenance.md` for local vendored-source adjustments. Preserve the
+`ARASAN_EMBEDDED_STREAM_INPUT` polling path in
+`ThirdParty/Arasan/src/input.cpp`; the embedded wrapper depends on it to feed
+UCI commands through redirected C++ streams.
 
-If upstream has not fixed the same issue, reapply the local adjustment before
-validation. If upstream has fixed it, remove the local patch note from
-`Docs/Provenance.md`.
+Also verify whether upstream still carries fixes previously patched locally.
+For example, the arm64 NEON `dpbusd_epi32` accumulator fix was accepted
+upstream in Arasan commit `58c58cf9`, so it should not be carried as a duplicate
+local patch.
 
 ## 6. Validate
 

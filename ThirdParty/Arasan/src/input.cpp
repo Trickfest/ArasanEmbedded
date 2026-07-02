@@ -67,9 +67,9 @@ bool Input::checkInput(std::vector<std::string> &cmds, std::mutex &mtx) {
     }
     return false;
 #else
-	#ifdef _WIN32
-	    DWORD nchar;
-	    if (PeekNamedPipe(GetStdHandle(STD_INPUT_HANDLE), NULL, 0,
+#ifdef _WIN32
+    DWORD nchar;
+    if (PeekNamedPipe(GetStdHandle(STD_INPUT_HANDLE), NULL, 0,
                       NULL, &nchar, NULL)) {
          for (unsigned i = 0; i < nchar && buf_index < BUF_SIZE; i++) {
             buf[buf_index++] = getc(stdin);
@@ -112,9 +112,9 @@ bool Input::checkInput(std::vector<std::string> &cmds, std::mutex &mtx) {
             buf_index = processCmdChars(buf + buf_index, bytes, cmds, mtx);
             return true;
         }
-	    }
-	    return false;
-	#endif
+    }
+    return false;
+#endif
 #endif
 }
 
