@@ -75,6 +75,10 @@ For example, the arm64 NEON `dpbusd_epi32` accumulator fix was accepted
 upstream in Arasan commit `58c58cf9`, so it should not be carried as a duplicate
 local patch.
 
+Likewise, the mate-distance-pruning fix for Arasan issue #70 was accepted
+upstream in Arasan commit `b2cbcae8`, so the older local `hash.h` clamp
+workaround should not be reintroduced.
+
 ## 6. Validate
 
 Run the full local release gate from `Docs/Testing.md`.

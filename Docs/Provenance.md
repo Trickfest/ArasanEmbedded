@@ -9,13 +9,13 @@ https://github.com/jdart1/arasan-chess
 Current vendored upstream commit:
 
 ```text
-36774cd7581685491ad0e0f77ec7b3a0a5763376
+c4bfcab0d5873cb5f61531426fad7a1b3abfe7f1
 ```
 
 Commit message:
 
 ```text
-Windows Makefile fix
+Makefile fix
 ```
 
 ## Included Upstream Material
@@ -43,13 +43,14 @@ ThirdParty/Arasan/network/arasanv8-20260622.nnue
   defined, command polling reads from redirected C++ streams instead of polling
   platform stdin file descriptors. This lets the in-process wrapper feed UCI
   commands without running Arasan as a separate process.
-- `ThirdParty/Arasan/src/hash.h`: mate-range hash values are clamped at
-  `Constants::MATE` bounds when storing scores. This avoids a debug assertion
-  abort if search produces a mate-bound score at a deeper ply.
 
 The arm64 NEON `dpbusd_epi32` sparse NNUE accumulation fix is now included
 upstream in Arasan commit `58c58cf9`, so this package no longer carries that
 fix as a local vendored adjustment.
+
+Arasan's mate-distance-pruning fix for issue #70 is now included upstream in
+Arasan commit `b2cbcae8`, so this package no longer carries a local hash-score
+clamp workaround for that debug assertion.
 
 ## Excluded Upstream Material
 

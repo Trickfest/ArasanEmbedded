@@ -1,5 +1,15 @@
 # Changelog
 
+## 1.0.6 - 2026-07-05
+
+- Update vendored Arasan source to upstream `master` commit
+  `c4bfcab0d5873cb5f61531426fad7a1b3abfe7f1`.
+- Replace the local mate-score hash clamp workaround with Arasan's upstream
+  mate-distance-pruning root-cause fix for debug assertion crashes when
+  quiescence search stores mate-range hash scores.
+- Refresh vendored Fathom Syzygy source and Arasan provenance documentation for
+  the new upstream snapshot.
+
 ## 1.0.5 - 2026-07-02
 
 - Clamp Arasan mate-score hash conversion at mate bounds instead of aborting in

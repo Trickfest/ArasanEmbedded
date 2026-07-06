@@ -4,19 +4,19 @@ import Testing
 @Suite("Arasan Hash Regression")
 struct ArasanHashRegressionTests {
     @Test
-    func mateScoreHashConversionClampsAtPositiveMateBound() {
+    func legalMateScoreHashConversionReachesPositiveMateBound() {
         let mate = AEMateScoreForTesting()
 
-        #expect(AEHashScoreToHashValueForTesting(mate, 2) == mate)
-        #expect(AEHashScoreToHashValueForTesting(mate - 1, 3) == mate)
+        #expect(AEHashScoreToHashValueForTesting(mate - 1, 2) == mate)
+        #expect(AEHashScoreToHashValueForTesting(mate - 2, 3) == mate)
     }
 
     @Test
-    func mateScoreHashConversionClampsAtNegativeMateBound() {
+    func legalMateScoreHashConversionReachesNegativeMateBound() {
         let mate = AEMateScoreForTesting()
 
-        #expect(AEHashScoreToHashValueForTesting(-mate, 2) == -mate)
-        #expect(AEHashScoreToHashValueForTesting((-mate) + 1, 3) == -mate)
+        #expect(AEHashScoreToHashValueForTesting((-mate) + 1, 2) == -mate)
+        #expect(AEHashScoreToHashValueForTesting((-mate) + 2, 3) == -mate)
     }
 
     @Test

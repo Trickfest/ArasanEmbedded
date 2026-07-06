@@ -1,6 +1,6 @@
 -----------------------------------------------------------------------------
 
-                        Arasan Chess Engine LICENSE
+                        Arasan Chess LICENSE
 
 -----------------------------------------------------------------------------
 
@@ -33,18 +33,13 @@ Copyright 1994-2026 by Jon Dart
 -----------------------------------------------------------------------------
 Notes regarding the GUI:
 
-The Arasan Windows user interface, the source of which is in the "gui"
-directory, is also under this license, with the exception of the
-"fonts" subdirectory, and the "chess-openings" subdirectory. The
-fonts, which are loaded at runtime, are copyrighted, and use of those
-outside of official Arasan releases will require a suitable license
-from the copyright owner(s). The chess-openings subdirectory is a fork
+The Arasan Windows user interface (GUI), the source of which is in the "gui"
+directory, is also under this license, and leverages the the lundasvg SVG
+rendering package (https://github.com/sammycage/lunasvg), also MIT-licensed.
+
+The SVG piece images (spatial and celtic), which are loaded at runtime, are 
+Copyright Maurizio Monge, MIT license.
+
+The chess-openings subdirectory, distributed with the GUI, is a fork
 of https://github.com/lichess-org/chess-openings/, and is under the
 Creative Commons CC0 1.0 Universal license.
-
-Official binaries of the Arasan Windows GUI installer, which include
-the fonts, may be freely distributed, provided that:
-
-1. It is distributed in unmodified form.
-2. No more than a nominal fee is charged for copying or media.
-

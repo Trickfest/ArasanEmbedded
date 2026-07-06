@@ -42,8 +42,8 @@ The package tests live in `Tests/ArasanEmbeddedTests`.
 
 `ArasanHashRegressionTests.swift` covers low-level search-score storage:
 
-- mate-range scores clamp at the positive and negative mate bounds when stored
-  in the hash table
+- legal ply-relative mate scores convert to the positive and negative hash
+  bounds when stored in the hash table
 - normal non-mate scores and the invalid-score sentinel are preserved
 
 `ArasanEngineIntegrationTests.swift` covers real engine behavior:

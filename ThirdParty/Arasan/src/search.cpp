@@ -2013,6 +2013,16 @@ score_t Search::quiesce(int ply,int depth)
       node->flags |= EXACT;
       return drawScore(board);
    }
+   // Mate distance pruning. No move can yield a score outside the mate
+   // range still achievable at this ply, so if the window lies wholly
+   // outside that range, return the bound.
+   {
+      const score_t mdpAlpha = std::max<score_t>(node->alpha, -Constants::MATE + ply);
+      const score_t mdpBeta = std::min<score_t>(node->beta, Constants::MATE - ply - 1);
+      if (mdpAlpha >= mdpBeta) {
+         return mdpBeta;
+      }
+   }
 #ifdef SEARCH_TRACE
    if (mainThread()) {
       indent(ply); std::cout << "window [" << node->alpha << ","

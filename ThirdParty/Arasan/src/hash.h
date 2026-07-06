@@ -72,11 +72,11 @@ class HashEntry {
         if (score == Constants::INVALID_SCORE) {
             return score;
         } else if (score <= -Constants::MATE_RANGE) {
-            const score_t value = score - (ply - 1);
-            return value < -Constants::MATE ? -Constants::MATE : value;
+            assert(score - (ply - 1) >= -Constants::MATE);
+            return score - (ply - 1);
         } else if (score >= Constants::MATE_RANGE) {
-            const score_t value = score + (ply - 1);
-            return value > Constants::MATE ? Constants::MATE : value;
+            assert(score + (ply - 1) <= Constants::MATE);
+            return score + (ply - 1);
         } else {
             return score;
         }

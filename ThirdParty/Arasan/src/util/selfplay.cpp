@@ -1,4 +1,4 @@
-// Copyright 2021-2025 by Jon Dart. All Rights Reserved.
+// Copyright 2021-2026 by Jon Dart. All Rights Reserved.
 #include "board.h"
 #include "boardio.h"
 #include "binformat.h"
@@ -26,7 +26,9 @@ extern "C" {
 }
 #endif
 
+#ifndef _WIN32
 static constexpr size_t LINUX_STACK_SIZE = 4 * 1024 * 1024;
+#endif
 
 using namespace std::placeholders;
 
@@ -109,7 +111,8 @@ static struct SelfPlayOptions {
     unsigned semiRandomizeInterval = 1;
     unsigned semiRandomPerGame = 14;
     unsigned multipv_limit = 8;
-    int multiPVMargin = static_cast<int>(0.3 * Scoring::PAWN_VALUE);
+    score_t multiPVMargin = static_cast<score_t>(0.45 * Scoring::PAWN_VALUE);
+    float whiteMarginAdjust = 0.91;
     bool skipNonQuiet = true;
     bool nonQuietSearchTest = false;
     score_t nonQuietSearchMargin = static_cast<score_t>(Scoring::PAWN_VALUE);
@@ -324,6 +327,10 @@ static void semiRandomMove(const Board &board, SelfPlayOptions::RandomizeType ty
         // results are ranked in descending order by score
         int maxScore = stats.multi_pvs[0].display_value;
         MoveResult candidates[MAX_MULTIPV];
+        score_t margin = sp_options.multiPVMargin;
+        if (board.sideToMove() == White) {
+            margin = static_cast<score_t>(sp_options.whiteMarginAdjust * margin);
+        }
         for (size_t i = 0; i < stats.multipv_count; ++i) {
             const Statistics::MultiPVEntry &entry = stats.multi_pvs[i];
             if (!IsNull(entry.best) && (maxScore - entry.display_value) <= sp_options.multiPVMargin) {
@@ -351,7 +358,15 @@ static void selfplay(ThreadData &td) {
         std::vector<BinFormats::PositionData> output;
         uint64_t prevNodes = 0ULL;
         int prevScore = 0;
-        unsigned noSemiRandom = 0, semiRandomCount = 0, prevDepth = 0;
+        unsigned prevDepth = 0;
+        // Semi-randomization is scheduled independently per color. Otherwise,
+        // with a small semiRandomizeInterval the fixed ply spacing between
+        // semi-random moves locks onto a single color (determined by the
+        // parity of bookMoves), so all the deliberate weakenings hit one
+        // side and skew the White/Black result. Index 0 = White, 1 = Black.
+        unsigned noSemiRandom[2] = {0, 0}, semiRandomCount[2] = {0, 0};
+        const unsigned semiRandomBudget[2] = {(sp_options.semiRandomPerGame + 1) / 2,
+                                              sp_options.semiRandomPerGame / 2};
         unsigned bookMoves = sp_options.maxBookPly;
         for (unsigned ply = 0; ply <= sp_options.maxOutPly && !adjudicated && !terminated; ++ply) {
             stats.clear();
@@ -380,10 +395,11 @@ static void selfplay(ThreadData &td) {
                     // We have no score from a random move, so reset the
                     // adjudication counter
                     low_score_count = 0;
-                } else if (sp_options.semiRandomize && !skipRandom &&
+                } else if (int ci = (board.sideToMove() == White) ? 0 : 1;
+                           sp_options.semiRandomize && !skipRandom &&
                            (ply > bookMoves + sp_options.randomizeRange) &&
-                           (semiRandomCount == 0 || noSemiRandom >= sp_options.semiRandomizeInterval) &&
-                           (semiRandomCount < sp_options.semiRandomPerGame) &&
+                           (semiRandomCount[ci] == 0 || noSemiRandom[ci] >= sp_options.semiRandomizeInterval) &&
+                           (semiRandomCount[ci] < semiRandomBudget[ci]) &&
                            (int(board.men()) > globals::EGTBMenCount) &&
                            ((sp_options.randomizeType != SelfPlayOptions::RandomizeType::Nodes) ||
                             (prevNodes && prevDepth >= sp_options.depthLimit))) {
@@ -402,8 +418,8 @@ static void selfplay(ThreadData &td) {
                         low_score_count = 0;
                     if (sp_options.randomizeType == SelfPlayOptions::RandomizeType::Nodes ||
                         candCount > 1) {
-                        noSemiRandom = 0;
-                        ++semiRandomCount;
+                        noSemiRandom[ci] = 0;
+                        ++semiRandomCount[ci];
                     }
                 } else {
                     m = searcher->findBestMove(board, FixedDepth, Constants::INFINITE_TIME,
@@ -419,7 +435,7 @@ static void selfplay(ThreadData &td) {
                         ++low_score_count;
                     else
                         low_score_count = 0;
-                    ++noSemiRandom;
+                    ++noSemiRandom[ci];
                     if (score >= sp_options.adjudicateWinScore)
                         ++high_score_count;
                     else
@@ -802,8 +818,12 @@ int CDECL main(int argc, char **argv) {
     init_threads();
     launch_threads();
 
-    std::cout << "White wins: " << wins << " Black wins: " << losses << " Draws: " << draws <<
-        " draw percentage: " << std::setprecision(4) << draws*100.0/(draws + losses + wins) << "%" << std::endl;
+    std::cout << "White wins: " << wins << " Black wins: " << losses << " Draws: " << draws
+              << std::endl;
+    std::cout << std::setprecision(4)
+              << "White score percentage: " << ((wins + draws/2) * 100.0) / (draws + losses + wins) << '%'
+              << " draw percentage: " << draws * 100.0 / (draws + losses + wins) << '%'
+              << std::endl;
     uint64_t skipped = 0;
     for (unsigned i = 0; i < sp_options.cores; i++) {
         skipped += threadDatas[i].skipped;

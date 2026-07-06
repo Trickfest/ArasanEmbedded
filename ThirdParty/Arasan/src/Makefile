@@ -280,8 +280,7 @@ endif
 
 default: dirs $(EXPORT)/$(ARASANX)
 
-utils: dirs $(EXPORT)/playchess $(EXPORT)/makebook $(EXPORT)/ecocoder \
-$(EXPORT)/selfplay $(EXPORT)/blundercheck $(EXPORT)/sortpgn
+utils: dirs $(EXPORT)/playchess $(EXPORT)/makebook $(EXPORT)/ecocoder $(EXPORT)/selfplay $(EXPORT)/blundercheck $(EXPORT)/sortpgn
 
 unit: dirs $(EXPORT)/unit
 
