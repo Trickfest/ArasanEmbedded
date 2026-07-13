@@ -1,10 +1,7 @@
 name: ArasanEmbedded CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -18,27 +15,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
-      - name: Validate package manifest
-        run: swift package dump-package
-
-      - name: Build package
-        run: swift build
-
-      - name: Run package tests
-        run: swift test
-
-      - name: Run CLI smoke test
-        run: swift run arasan-smoke --depth 1
-
-      - name: Run short CLI soak test
-        run: swift run arasan-soak --iterations 5 --movetime 250
-
-      - name: Build iOS simulator package product
-        run: |
-          xcodebuild \
-            -scheme ArasanEmbedded \
-            -configuration Debug \
-            -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=latest' \
-            -derivedDataPath .build/xcode-ios \
-            build
+      - name: Run complete package validation
+        run: Scripts/validate.sh

@@ -1,9 +1,10 @@
 import ArasanEmbedded
+import Darwin
 import Foundation
 
 @main
 struct ArasanSmoke {
-    static func main() throws {
+    static func main() {
         do {
             let arguments = CommandLine.arguments.dropFirst()
             let options = try SmokeOptions(arguments: Array(arguments))
@@ -11,6 +12,9 @@ struct ArasanSmoke {
             try runner.run()
         } catch SmokeError.help {
             print(SmokeRunner.usage)
+        } catch {
+            fputs("error: \(error.localizedDescription)\n", stderr)
+            Darwin.exit(EXIT_FAILURE)
         }
     }
 }
@@ -28,6 +32,7 @@ private struct SmokeOptions {
     var syzygyUses50MoveRule = true
 
     init(arguments: [String]) throws {
+        var depthWasProvided = false
         var index = 0
         while index < arguments.count {
             let option = arguments[index]
@@ -37,6 +42,7 @@ private struct SmokeOptions {
             case "--depth":
                 depth = try Int(Self.value(after: option, in: arguments, index: &index))
                     .requiredInteger(option)
+                depthWasProvided = true
             case "--movetime":
                 movetime = try Int(Self.value(after: option, in: arguments, index: &index))
                     .requiredInteger(option)
@@ -61,6 +67,17 @@ private struct SmokeOptions {
                 throw SmokeError.unknownOption(option)
             }
             index += 1
+        }
+
+        guard depth > 0 else { throw SmokeError.invalidValue("--depth must be greater than zero") }
+        if let movetime, movetime <= 0 {
+            throw SmokeError.invalidValue("--movetime must be greater than zero")
+        }
+        if depthWasProvided, movetime != nil {
+            throw SmokeError.invalidValue("choose either --depth or --movetime")
+        }
+        guard isPlausiblePosition(fen) else {
+            throw SmokeError.invalidValue("--fen must be startpos or a plausible single-line four/six-field FEN")
         }
     }
 
@@ -103,8 +120,8 @@ private final class SmokeRunner: @unchecked Sendable {
             }
             self.engine = engine
             try engine.start()
-            _ = try stream.waitForLine(containing: "uciok", timeout: 5)
-            _ = try stream.waitForLine(containing: "readyok", timeout: 5)
+            _ = try stream.waitForLine(timeout: 5) { $0 == "uciok" }
+            _ = try stream.waitForLine(timeout: 5) { $0 == "readyok" }
 
             if options.fen == "startpos" {
                 engine.sendCommand("position startpos")
@@ -118,7 +135,12 @@ private final class SmokeRunner: @unchecked Sendable {
                 engine.sendCommand("go depth \(options.depth)")
             }
 
-            _ = try stream.waitForLine(prefix: "bestmove", timeout: 20)
+            let bestmove = try stream.waitForLine(timeout: 20) {
+                $0 == "bestmove" || $0.hasPrefix("bestmove ")
+            }
+            guard parseBestmove(bestmove) != nil else {
+                throw SmokeError.malformedBestmove(bestmove)
+            }
             engine.stop()
         } catch {
             engine?.stop()
@@ -155,33 +177,25 @@ private final class LockedLineStream: @unchecked Sendable {
     }
 
     func waitForLine(
-        containing needle: String? = nil,
-        prefix: String? = nil,
-        timeout: TimeInterval
+        timeout: TimeInterval,
+        matching predicate: (String) -> Bool
     ) throws -> String {
         let deadline = Date(timeIntervalSinceNow: timeout)
         condition.lock()
         defer { condition.unlock() }
 
         while true {
-            if let line = matchingLine(containing: needle, prefix: prefix) {
+            if let line = lines.first(where: predicate) {
                 return line
             }
             if Date() >= deadline {
+                if let line = lines.first(where: predicate) {
+                    return line
+                }
                 throw SmokeError.timeout
             }
             condition.wait(until: deadline)
         }
-    }
-
-    private func matchingLine(containing needle: String?, prefix: String?) -> String? {
-        if let needle {
-            return lines.first { $0.contains(needle) }
-        }
-        if let prefix {
-            return lines.first { $0.hasPrefix(prefix) }
-        }
-        return nil
     }
 }
 
@@ -190,7 +204,9 @@ private enum SmokeError: Error, LocalizedError {
     case missingValue(String)
     case unknownOption(String)
     case invalidInteger(String)
+    case invalidValue(String)
     case timeout
+    case malformedBestmove(String)
 
     var errorDescription: String? {
         switch self {
@@ -202,10 +218,79 @@ private enum SmokeError: Error, LocalizedError {
             "Unknown option: \(option)."
         case .invalidInteger(let option):
             "Expected an integer value for \(option)."
+        case .invalidValue(let message):
+            "Invalid option: \(message)."
         case .timeout:
             "Timed out waiting for Arasan output."
+        case .malformedBestmove(let line):
+            "Arasan returned a malformed bestmove line: \(line)"
         }
     }
+}
+
+private func parseBestmove(_ line: String) -> String? {
+    let parts = line.split(separator: " ")
+    guard (parts.count == 2 || parts.count == 4), parts[0] == "bestmove" else { return nil }
+    let move = String(parts[1])
+    guard isValidMoveToken(move) else {
+        return nil
+    }
+    if parts.count == 4 {
+        guard parts[2] == "ponder",
+              isCoordinateMoveToken(move),
+              isCoordinateMoveToken(String(parts[3])) else {
+            return nil
+        }
+    }
+    return move
+}
+
+private func isValidMoveToken(_ move: String) -> Bool {
+    move.range(
+        of: #"^(?:[a-h][1-8][a-h][1-8][nbrq]?|0000|\(none\))$"#,
+        options: .regularExpression
+    ) != nil
+}
+
+private func isCoordinateMoveToken(_ move: String) -> Bool {
+    move.range(
+        of: #"^[a-h][1-8][a-h][1-8][nbrq]?$"#,
+        options: .regularExpression
+    ) != nil
+}
+
+private func isPlausiblePosition(_ value: String) -> Bool {
+    guard !value.contains("\0"), !value.contains("\r"), !value.contains("\n") else {
+        return false
+    }
+    if value == "startpos" { return true }
+    let fields = value.split(separator: " ").map(String.init)
+    guard fields.count == 4 || fields.count == 6 else { return false }
+    let ranks = fields[0].split(separator: "/", omittingEmptySubsequences: false)
+    guard ranks.count == 8 else { return false }
+    for rank in ranks {
+        var count = 0
+        for character in rank {
+            if let ascii = character.asciiValue, (49...56).contains(ascii) {
+                count += Int(ascii - 48)
+            } else {
+                guard "prnbqkPRNBQK".contains(character) else { return false }
+                count += 1
+            }
+        }
+        guard count == 8 else { return false }
+    }
+    guard fields[1] == "w" || fields[1] == "b" else { return false }
+    guard fields[2] == "-" || fields[2].allSatisfy({ "KQkq".contains($0) }) else { return false }
+    guard fields[3] == "-" || fields[3].range(
+        of: #"^[a-h][36]$"#,
+        options: .regularExpression
+    ) != nil else { return false }
+    if fields.count == 6 {
+        guard let halfmove = Int(fields[4]), halfmove >= 0,
+              let fullmove = Int(fields[5]), fullmove >= 1 else { return false }
+    }
+    return true
 }
 
 private extension Optional where Wrapped == Int {

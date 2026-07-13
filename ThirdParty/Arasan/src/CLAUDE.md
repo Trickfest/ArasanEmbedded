@@ -37,7 +37,6 @@
 
 w## Instructions for Claude
 - Include only the src directory and the nnue ubdirectory in scope, unless told otherwise. Code in the syzygy subdirectory belongs to a separate project, and should not be modified.
-- Create a local branch for your work and follow the Git guidelines below.
 - Do not make or suggest changes outside the scope of the assigned task.
 - Do not make or suggest non-functional changes to the code.
 - Be systematic. Focus on one specific aspect of a problem at a time.
@@ -62,9 +61,10 @@ w## Instructions for Claude
 - std::array is generally preferred over C-style arrays. But avoid structures with dynamically allocated contents (such as std::list) in peformance-senstive code.
 
 ## Git guidelines
-- When completing a part of a task, or after significant progress has been made, commit your changes
-- Use rollback when necessary to restore prior state
-- Keep Git commit comments brief and concise
+- Create a local branch for your work.
+- When completing a part of a task, or after significant progress has been made, commit your changes.
+- Use rollback when necessary to restore prior state.
+- Keep Git commit comments brief and concise. Focus on the problem that was solved, or feature that was added.
 - When your task is complete, leave the branch unmerged: I will merge manually
 
 

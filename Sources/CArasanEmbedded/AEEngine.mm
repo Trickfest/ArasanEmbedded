@@ -1,281 +1,729 @@
 #import "AEEngine.h"
 
 #include <atomic>
+#include <cctype>
 #include <condition_variable>
-#include <deque>
+#include <cstdint>
+#include <exception>
+#include <fstream>
+#include <istream>
 #include <memory>
 #include <mutex>
-#include <ostream>
-#include <streambuf>
+#include <new>
+#include <pthread.h>
 #include <string>
-#include <thread>
+#include <utility>
+#include <vector>
 
+#import <dispatch/dispatch.h>
+
+#include "AEEngineStreams.hpp"
 #include "ArasanEmbeddedUCI.hpp"
+
+using namespace ArasanEmbeddedBridge;
 
 namespace {
 
-class CommandQueue {
+constexpr std::size_t kMaximumCommandBytes = 1024 * 1024;
+constexpr std::size_t kRequiredEngineStackBytes = 4 * 1024 * 1024;
+constexpr std::size_t kRequiredNNUEBytes = 25'024'576;
+constexpr char kCanonicalNNUEOptionPrefix[] = "setoption name NNUE file value ";
+char kCallbackQueueSpecificKey;
+
+class ActiveEngineRegistry final {
 public:
-    void push(std::string command) {
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            if (closed_) {
-                return;
-            }
-            commands_.push_back(std::move(command));
-        }
-        condition_.notify_one();
-    }
-
-    bool pop(std::string &command) {
-        std::unique_lock<std::mutex> lock(mutex_);
-        condition_.wait(lock, [&] { return closed_ || !commands_.empty(); });
-        if (commands_.empty()) {
-            return false;
-        }
-        command = std::move(commands_.front());
-        commands_.pop_front();
-        return true;
-    }
-
-    bool tryPop(std::string &command) {
+    bool claim(const void *owner) {
         std::lock_guard<std::mutex> lock(mutex_);
-        if (commands_.empty()) {
+        if (owner_ != nullptr) {
             return false;
         }
-        command = std::move(commands_.front());
-        commands_.pop_front();
+        owner_ = owner;
         return true;
     }
 
-    void close() {
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            closed_ = true;
+    void release(const void *owner) {
+        std::lock_guard<std::mutex> lock(mutex_);
+        if (owner_ == owner) {
+            owner_ = nullptr;
         }
-        condition_.notify_all();
     }
 
 private:
     std::mutex mutex_;
-    std::condition_variable condition_;
-    std::deque<std::string> commands_;
-    bool closed_ = false;
+    const void *owner_ = nullptr;
 };
 
-class QueueInputBuffer: public std::streambuf {
+ActiveEngineRegistry &activeEngineRegistry() {
+    static ActiveEngineRegistry registry;
+    return registry;
+}
+
+enum class Lifecycle {
+    idle,
+    running,
+    stopping,
+    finished,
+    stopped,
+};
+
+enum class CommandValidation {
+    accepted,
+    ignored,
+    rejected,
+};
+
+bool startsWithNNUEFileOption(const std::string &command) {
+    std::string normalized;
+    normalized.reserve(command.size());
+    bool pendingSpace = false;
+    for (const unsigned char character : command) {
+        if (std::isspace(character)) {
+            pendingSpace = !normalized.empty();
+            continue;
+        }
+        if (pendingSpace) {
+            normalized.push_back(' ');
+            pendingSpace = false;
+        }
+        normalized.push_back(static_cast<char>(std::tolower(character)));
+    }
+
+    constexpr char prefix[] = "setoption name nnue file";
+    return normalized == prefix ||
+        (normalized.size() > sizeof(prefix) - 1 &&
+         normalized.compare(0, sizeof(prefix) - 1, prefix) == 0 &&
+         normalized[sizeof(prefix) - 1] == ' ');
+}
+
+bool startsWithThreadsOption(const std::string &command) {
+    std::string normalized;
+    normalized.reserve(command.size());
+    bool pendingSpace = false;
+    for (const unsigned char character : command) {
+        if (std::isspace(character)) {
+            pendingSpace = !normalized.empty();
+            continue;
+        }
+        if (pendingSpace) {
+            normalized.push_back(' ');
+            pendingSpace = false;
+        }
+        normalized.push_back(static_cast<char>(std::tolower(character)));
+    }
+
+    constexpr char prefix[] = "setoption name threads";
+    return normalized == prefix ||
+        (normalized.size() > sizeof(prefix) - 1 &&
+         normalized.compare(0, sizeof(prefix) - 1, prefix) == 0 &&
+         normalized[sizeof(prefix) - 1] == ' ');
+}
+
+bool validateStartupNNUEOption(const std::string &command, std::string &reason) {
+    if (command.compare(0,
+                        sizeof(kCanonicalNNUEOptionPrefix) - 1,
+                        kCanonicalNNUEOptionPrefix) != 0) {
+        reason = "startup NNUE option must use the canonical setoption form";
+        return false;
+    }
+
+    const std::string path = command.substr(sizeof(kCanonicalNNUEOptionPrefix) - 1);
+    if (path.empty() || std::isspace(static_cast<unsigned char>(path.back()))) {
+        reason = "startup NNUE path is empty or ends in whitespace";
+        return false;
+    }
+
+    std::ifstream input(path, std::ios::binary | std::ios::ate);
+    if (!input || input.tellg() != static_cast<std::streamoff>(kRequiredNNUEBytes)) {
+        reason = "startup NNUE file is missing or incompatible";
+        return false;
+    }
+    input.seekg(0);
+    char header[4] {};
+    input.read(header, sizeof(header));
+    if (!input || header[0] != 'A' || header[1] != 'R' ||
+        header[2] != 'A' || static_cast<unsigned char>(header[3]) != 0x08) {
+        reason = "startup NNUE file is missing or incompatible";
+        return false;
+    }
+    return true;
+}
+
+CommandValidation validateCommand(NSString *command,
+                                  bool allowNNUEFileOption,
+                                  std::string &normalized,
+                                  std::string &rejectionReason) {
+    if (command.length == 0) {
+        return CommandValidation::ignored;
+    }
+
+    const NSUInteger byteCount = [command lengthOfBytesUsingEncoding:NSUTF8StringEncoding];
+    if (byteCount == 0 || byteCount > kMaximumCommandBytes) {
+        rejectionReason = byteCount > kMaximumCommandBytes
+            ? "command exceeds 1 MiB"
+            : "command is not UTF-8";
+        return CommandValidation::rejected;
+    }
+
+    NSData *data = [command dataUsingEncoding:NSUTF8StringEncoding allowLossyConversion:NO];
+    if (!data) {
+        rejectionReason = "command is not UTF-8";
+        return CommandValidation::rejected;
+    }
+
+    normalized.assign(static_cast<const char *>(data.bytes), data.length);
+    if (!normalized.empty() && normalized.back() == '\n') {
+        normalized.pop_back();
+        if (!normalized.empty() && normalized.back() == '\r') {
+            normalized.pop_back();
+        }
+    }
+    if (normalized.empty()) {
+        return CommandValidation::ignored;
+    }
+    if (normalized.find('\0') != std::string::npos) {
+        rejectionReason = "command contains NUL";
+        return CommandValidation::rejected;
+    }
+    if (normalized.find('\n') != std::string::npos || normalized.find('\r') != std::string::npos) {
+        rejectionReason = "command contains more than one line";
+        return CommandValidation::rejected;
+    }
+    if (!allowNNUEFileOption && startsWithNNUEFileOption(normalized)) {
+        rejectionReason = "change NNUE files through ArasanEngine.Configuration and a fresh engine";
+        return CommandValidation::rejected;
+    }
+    if (allowNNUEFileOption && startsWithNNUEFileOption(normalized) &&
+        !validateStartupNNUEOption(normalized, rejectionReason)) {
+        return CommandValidation::rejected;
+    }
+    if (startsWithThreadsOption(normalized)) {
+        rejectionReason = "the embedded wrapper fixes Arasan Threads at 1 for safe teardown";
+        return CommandValidation::rejected;
+    }
+    return CommandValidation::accepted;
+}
+
+class EngineState final: public std::enable_shared_from_this<EngineState> {
 public:
-    explicit QueueInputBuffer(CommandQueue &queue): queue_(queue) {
-        setg(placeholder_, placeholder_, placeholder_);
+    explicit EngineState(AELineHandler handler):
+        handler_([handler copy]),
+        callbackQueue_(dispatch_queue_create("com.arasanembedded.AEEngine.callback",
+                                             DISPATCH_QUEUE_SERIAL)) {
+        dispatch_queue_set_specific(callbackQueue_, &kCallbackQueueSpecificKey, this, nullptr);
     }
 
-protected:
-    std::streamsize showmanyc() override {
-        if (gptr() < egptr()) {
-            return egptr() - gptr();
+    ~EngineState() {
+        stop();
+        try {
+            finishCallbackDelivery();
+        } catch (...) {
         }
-
-        if (!queue_.tryPop(current_)) {
-            return 0;
-        }
-
-        prepareCurrentCommand();
-        return egptr() - gptr();
     }
 
-    int_type underflow() override {
-        if (gptr() < egptr()) {
-            return traits_type::to_int_type(*gptr());
+    bool start(NSArray<NSString *> *commands) noexcept {
+        try {
+            return startImpl(commands);
+        } catch (...) {
+            deliverStartFailure("could not allocate or validate native startup state");
+            return false;
+        }
+    }
+
+    bool startImpl(NSArray<NSString *> *commands) {
+        if (!reapFinishedRun()) {
+            return false;
         }
 
-        if (!queue_.pop(current_)) {
-            return traits_type::eof();
+        std::vector<std::string> initialCommands;
+        initialCommands.reserve(commands.count);
+        bool hasStartupNNUE = false;
+        for (NSString *command in commands) {
+            std::string normalized;
+            std::string rejectionReason;
+            const auto validation = validateCommand(command, true, normalized, rejectionReason);
+            if (validation == CommandValidation::rejected) {
+                deliverStartFailure(rejectionReason);
+                return false;
+            }
+            if (validation == CommandValidation::accepted) {
+                hasStartupNNUE = hasStartupNNUE || startsWithNNUEFileOption(normalized);
+                initialCommands.push_back(std::move(normalized));
+            }
+        }
+        if (!hasStartupNNUE || initialCommands.size() < 2 ||
+            initialCommands.front() != "uci" ||
+            !startsWithNNUEFileOption(initialCommands[1])) {
+            deliverStartFailure(
+                "startup must begin with uci followed by one validated NNUE file option"
+            );
+            return false;
         }
 
-        prepareCurrentCommand();
-        return traits_type::to_int_type(*gptr());
+        const auto self = shared_from_this();
+        std::unique_lock<std::mutex> lifecycleLock(lifecycleMutex_);
+        if (lifecycle_ != Lifecycle::idle && lifecycle_ != Lifecycle::stopped) {
+            return false;
+        }
+        if (!activeEngineRegistry().claim(this)) {
+            lifecycleLock.unlock();
+            deliverStartFailure("another ArasanEngine instance is already active");
+            return false;
+        }
+        ownsActiveLease_.store(true);
+
+        std::shared_ptr<CommandQueue> queue;
+        try {
+            queue = std::make_shared<CommandQueue>();
+            for (auto &command : initialCommands) {
+                queue->push(std::move(command));
+            }
+        } catch (...) {
+            releaseActiveLease();
+            lifecycleLock.unlock();
+            deliverStartFailure("could not allocate native engine state");
+            return false;
+        }
+
+        const std::uint64_t generation = ++generationCounter_;
+        activeCallbackGeneration_.store(generation);
+        queue_ = queue;
+        lifecycle_ = Lifecycle::running;
+
+        auto *context = new (std::nothrow) ThreadContext{self, queue, generation};
+        if (!context) {
+            rollbackFailedStartLocked(queue);
+            lifecycleLock.unlock();
+            deliverStartFailure("could not allocate engine thread context");
+            return false;
+        }
+
+        pthread_attr_t attributes;
+        int status = pthread_attr_init(&attributes);
+        const bool attributesInitialized = status == 0;
+        if (status == 0) {
+            status = pthread_attr_setstacksize(&attributes, kRequiredEngineStackBytes);
+        }
+        if (status == 0) {
+            status = pthread_create(&engineThread_, &attributes, &EngineState::threadEntry, context);
+        }
+        if (attributesInitialized && pthread_attr_destroy(&attributes) != 0 && status == 0) {
+            // Attribute destruction does not affect the successfully created thread.
+        }
+
+        if (status != 0) {
+            delete context;
+            rollbackFailedStartLocked(queue);
+            lifecycleLock.unlock();
+            deliverStartFailure("could not create a 4 MiB Arasan engine thread");
+            return false;
+        }
+
+        hasEngineThread_ = true;
+        lifecycleLock.unlock();
+        return true;
+    }
+
+    void sendCommand(NSString *command) noexcept {
+        try {
+            sendCommandImpl(command);
+        } catch (...) {
+            deliverWrapperErrorNoThrow(
+                "could not allocate or validate the UCI command",
+                activeCallbackGeneration_.load()
+            );
+        }
+    }
+
+    void sendCommandImpl(NSString *command) {
+        std::string normalized;
+        std::string rejectionReason;
+        std::uint64_t generation = 0;
+
+        {
+            std::lock_guard<std::mutex> lock(lifecycleMutex_);
+            if (lifecycle_ != Lifecycle::running || !queue_) {
+                return;
+            }
+            const auto validation = validateCommand(command, false, normalized, rejectionReason);
+            if (validation == CommandValidation::accepted) {
+                queue_->push(std::move(normalized));
+                return;
+            }
+            if (validation == CommandValidation::ignored) {
+                return;
+            }
+            generation = activeCallbackGeneration_.load();
+        }
+
+        deliverWrapperError(rejectionReason, generation);
+    }
+
+    void stop() noexcept {
+        try {
+            stopImpl();
+        } catch (...) {
+        }
+    }
+
+    void stopImpl() {
+        pthread_t thread {};
+        bool shouldJoin = false;
+
+        {
+            std::unique_lock<std::mutex> lock(lifecycleMutex_);
+            if (lifecycle_ == Lifecycle::idle || lifecycle_ == Lifecycle::stopped) {
+                lock.unlock();
+                drainCallbacks();
+                return;
+            }
+            if (lifecycle_ == Lifecycle::stopping) {
+                lifecycleChanged_.wait(lock, [&] { return lifecycle_ != Lifecycle::stopping; });
+                lock.unlock();
+                drainCallbacks();
+                return;
+            }
+
+            if (queue_) {
+                queue_->requestShutdown();
+            }
+            lifecycle_ = Lifecycle::stopping;
+            if (hasEngineThread_) {
+                thread = engineThread_;
+                hasEngineThread_ = false;
+                shouldJoin = true;
+            }
+        }
+
+        if (shouldJoin && !pthread_equal(thread, pthread_self())) {
+            pthread_join(thread, nullptr);
+        }
+
+        activeCallbackGeneration_.store(0);
+        releaseActiveLease();
+        {
+            std::lock_guard<std::mutex> lock(lifecycleMutex_);
+            queue_.reset();
+            lifecycle_ = Lifecycle::stopped;
+        }
+        lifecycleChanged_.notify_all();
+        drainCallbacks();
+    }
+
+    bool isRunning() const {
+        std::lock_guard<std::mutex> lock(lifecycleMutex_);
+        return lifecycle_ == Lifecycle::running;
+    }
+
+    std::size_t engineThreadStackSize() const {
+        return engineThreadStackSize_.load();
     }
 
 private:
-    void prepareCurrentCommand() {
-        if (current_.empty() || current_.back() != '\n') {
-            current_.push_back('\n');
-        }
+    struct ThreadContext {
+        std::shared_ptr<EngineState> state;
+        std::shared_ptr<CommandQueue> queue;
+        std::uint64_t generation;
+    };
 
-        char *start = current_.data();
-        setg(start, start, start + current_.size());
+    static void *threadEntry(void *rawContext) noexcept {
+        std::unique_ptr<ThreadContext> context(static_cast<ThreadContext *>(rawContext));
+        try {
+            @autoreleasepool {
+                context->state->engineThreadStackSize_.store(pthread_get_stacksize_np(pthread_self()));
+                context->state->runEngineLoop(context->queue, context->generation);
+            }
+        } catch (...) {
+            context->state->deliverWrapperErrorNoThrow(
+                "native engine thread failed before initialization",
+                context->generation
+            );
+            context->state->finishEngineRunNoThrow(context->queue);
+        }
+        context->state->releaseActiveLeaseNoThrow();
+        return nullptr;
     }
 
-    CommandQueue &queue_;
-    std::string current_;
-    char placeholder_[1];
-};
-
-class CallbackOutputBuffer: public std::streambuf {
-public:
-    using Callback = std::function<void(const std::string &)>;
-
-    explicit CallbackOutputBuffer(Callback callback): callback_(std::move(callback)) {}
-
-protected:
-    int_type overflow(int_type value) override {
-        if (traits_type::eq_int_type(value, traits_type::eof())) {
-            return traits_type::not_eof(value);
+    void runEngineLoop(const std::shared_ptr<CommandQueue> &queue,
+                       std::uint64_t generation) noexcept {
+        std::unique_ptr<CallbackOutputBuffer> outputBuffer;
+        try {
+            outputBuffer = std::make_unique<CallbackOutputBuffer>(
+                [weakState = weak_from_this(), generation](const std::string &line) {
+                    if (auto state = weakState.lock()) {
+                        state->deliverLine(line, generation);
+                    }
+                }
+            );
+            QueueInputBuffer inputBuffer(*queue);
+            std::istream input(&inputBuffer);
+            std::ostream output(outputBuffer.get());
+            ArasanEmbedded::RunUCI(input, output);
+        } catch (const std::exception &error) {
+            finishOutputNoThrow(outputBuffer.get());
+            outputBuffer.reset();
+            try {
+                deliverWrapperError(
+                    std::string("native engine failure: ") + error.what(),
+                    generation
+                );
+            } catch (...) {
+                deliverWrapperErrorNoThrow("native engine failure", generation);
+            }
+        } catch (...) {
+            finishOutputNoThrow(outputBuffer.get());
+            outputBuffer.reset();
+            deliverWrapperErrorNoThrow("unknown native engine failure", generation);
         }
-
-        const char character = traits_type::to_char_type(value);
-        if (character == '\r') {
-            return traits_type::not_eof(value);
-        }
-
-        if (character == '\n') {
-            flushLine();
-        } else {
-            line_.push_back(character);
-        }
-        return traits_type::not_eof(value);
+        finishOutputNoThrow(outputBuffer.get());
+        finishEngineRunNoThrow(queue);
     }
 
-    int sync() override {
-        flushLine();
-        return 0;
-    }
-
-private:
-    void flushLine() {
-        if (line_.empty()) {
+    void finishOutputNoThrow(CallbackOutputBuffer *outputBuffer) noexcept {
+        if (!outputBuffer) {
             return;
         }
-        if (callback_) {
-            callback_(line_);
+        try {
+            outputBuffer->finish();
+        } catch (...) {
         }
-        line_.clear();
     }
 
-    Callback callback_;
-    std::string line_;
-};
+    void finishEngineRunNoThrow(const std::shared_ptr<CommandQueue> &queue) noexcept {
+        try {
+            queue->close();
+        } catch (...) {
+        }
+        try {
+            std::lock_guard<std::mutex> lock(lifecycleMutex_);
+            if (lifecycle_ == Lifecycle::running) {
+                lifecycle_ = Lifecycle::finished;
+            }
+        } catch (...) {
+        }
+        lifecycleChanged_.notify_all();
+    }
 
-std::mutex gActiveEngineMutex;
-bool gActiveEngine = false;
+    bool reapFinishedRun() {
+        pthread_t thread {};
+        bool shouldJoin = false;
+        {
+            std::unique_lock<std::mutex> lock(lifecycleMutex_);
+            if (lifecycle_ == Lifecycle::stopping) {
+                return false;
+            }
+            if (lifecycle_ != Lifecycle::finished) {
+                return true;
+            }
+            lifecycle_ = Lifecycle::stopping;
+            if (hasEngineThread_) {
+                thread = engineThread_;
+                hasEngineThread_ = false;
+                shouldJoin = true;
+            }
+        }
+        if (shouldJoin && !pthread_equal(thread, pthread_self())) {
+            pthread_join(thread, nullptr);
+        }
+        activeCallbackGeneration_.store(0);
+        {
+            std::lock_guard<std::mutex> lock(lifecycleMutex_);
+            queue_.reset();
+            lifecycle_ = Lifecycle::stopped;
+        }
+        lifecycleChanged_.notify_all();
+        drainCallbacks();
+        return true;
+    }
+
+    // lifecycleMutex_ must be held.
+    void rollbackFailedStartLocked(const std::shared_ptr<CommandQueue> &queue) {
+        queue->close();
+        activeCallbackGeneration_.store(0);
+        releaseActiveLease();
+        queue_.reset();
+        lifecycle_ = Lifecycle::stopped;
+        lifecycleChanged_.notify_all();
+    }
+
+    void releaseActiveLease() {
+        if (ownsActiveLease_.exchange(false)) {
+            activeEngineRegistry().release(this);
+        }
+    }
+
+    void releaseActiveLeaseNoThrow() noexcept {
+        try {
+            releaseActiveLease();
+        } catch (...) {
+        }
+    }
+
+    void deliverWrapperError(const std::string &reason, std::uint64_t generation) {
+        deliverLine("info string ArasanEmbedded error: " + reason, generation);
+    }
+
+    void deliverWrapperErrorNoThrow(const char *reason, std::uint64_t generation) noexcept {
+        try {
+            deliverWrapperError(reason, generation);
+        } catch (...) {
+        }
+    }
+
+    void deliverStartFailure(const std::string &reason) noexcept {
+        try {
+            deliverWrapperError(reason, 0);
+        } catch (...) {
+        }
+        try {
+            drainCallbacks();
+        } catch (...) {
+        }
+    }
+
+    void deliverLine(const std::string &line, std::uint64_t generation) {
+        AELineHandler handler;
+        {
+            std::lock_guard<std::mutex> lock(handlerMutex_);
+            handler = [handler_ copy];
+        }
+        if (!handler) {
+            return;
+        }
+
+        NSString *value = [[NSString alloc] initWithBytes:line.data()
+                                                   length:line.size()
+                                                 encoding:NSUTF8StringEncoding];
+        if (!value) {
+            return;
+        }
+
+        std::weak_ptr<EngineState> weakState = weak_from_this();
+        dispatch_async(callbackQueue_, ^{
+            @autoreleasepool {
+                auto state = weakState.lock();
+                if (!state) {
+                    return;
+                }
+                if (generation != 0 && state->activeCallbackGeneration_.load() != generation) {
+                    return;
+                }
+                handler(value);
+            }
+        });
+    }
+
+    void drainCallbacks() {
+        if (dispatch_get_specific(&kCallbackQueueSpecificKey) == this) {
+            return;
+        }
+        dispatch_sync(callbackQueue_, ^{});
+    }
+
+    void finishCallbackDelivery() {
+        activeCallbackGeneration_.store(0);
+        drainCallbacks();
+        std::lock_guard<std::mutex> lock(handlerMutex_);
+        handler_ = nil;
+    }
+
+    AELineHandler handler_;
+    std::mutex handlerMutex_;
+    dispatch_queue_t callbackQueue_;
+
+    mutable std::mutex lifecycleMutex_;
+    std::condition_variable lifecycleChanged_;
+    Lifecycle lifecycle_ = Lifecycle::idle;
+    std::shared_ptr<CommandQueue> queue_;
+    pthread_t engineThread_ {};
+    bool hasEngineThread_ = false;
+    std::uint64_t generationCounter_ = 0;
+    std::atomic<std::uint64_t> activeCallbackGeneration_ {0};
+    std::atomic<bool> ownsActiveLease_ {false};
+    std::atomic<std::size_t> engineThreadStackSize_ {0};
+};
 
 } // namespace
 
-@interface AEEngine ()
-@property(nonatomic, copy) AELineHandler lineHandler;
-@end
-
 @implementation AEEngine {
-    std::unique_ptr<CommandQueue> _queue;
-    std::unique_ptr<std::thread> _thread;
-    std::mutex _sendMutex;
-    std::atomic<bool> _running;
+    std::shared_ptr<EngineState> _state;
 }
 
 - (instancetype)initWithLineHandler:(AELineHandler)handler {
     self = [super init];
     if (self) {
-        _lineHandler = [handler copy];
-        _running.store(false);
+        try {
+            _state = std::make_shared<EngineState>(handler);
+        } catch (...) {
+            return nil;
+        }
     }
     return self;
 }
 
 - (void)dealloc {
     [self stop];
+    _state.reset();
 }
 
 - (BOOL)isRunning {
-    return _running.load();
+    try {
+        return _state && _state->isRunning();
+    } catch (...) {
+        return NO;
+    }
+}
+
+- (NSUInteger)engineThreadStackSize {
+    return _state ? _state->engineThreadStackSize() : 0;
 }
 
 - (BOOL)startEngine {
-    if (_running.load()) {
+    return [self startEngineWithCommands:@[]];
+}
+
+- (BOOL)startEngineWithCommands:(NSArray<NSString *> *)commands {
+    NSArray<NSString *> *snapshot = nil;
+    @try {
+        snapshot = [commands copy];
+        for (id command in snapshot) {
+            if (![command isKindOfClass:NSString.class]) {
+                return NO;
+            }
+        }
+    } @catch (NSException *) {
         return NO;
     }
-
-    {
-        std::lock_guard<std::mutex> lock(gActiveEngineMutex);
-        if (gActiveEngine) {
-            return NO;
-        }
-        gActiveEngine = true;
+    try {
+        return _state && _state->start(snapshot);
+    } catch (...) {
+        return NO;
     }
-
-    _queue = std::make_unique<CommandQueue>();
-    _running.store(true);
-
-    __weak __typeof__(self) weakSelf = self;
-    _thread = std::make_unique<std::thread>([weakSelf] {
-        @autoreleasepool {
-            [weakSelf runEngineLoop];
-        }
-    });
-
-    return YES;
 }
 
 - (void)sendCommand:(NSString *)command {
-    if (!_running.load() || command.length == 0) {
+    NSString *snapshot = nil;
+    @try {
+        if (![command isKindOfClass:NSString.class]) {
+            return;
+        }
+        snapshot = [command copy];
+    } @catch (NSException *) {
         return;
     }
-
-    std::lock_guard<std::mutex> lock(_sendMutex);
-    if (_queue) {
-        _queue->push(std::string(command.UTF8String));
+    try {
+        if (_state) {
+            _state->sendCommand(snapshot);
+        }
+    } catch (...) {
     }
 }
 
 - (void)stop {
-    const bool wasRunning = _running.exchange(false);
-    if (!wasRunning) {
-        return;
-    }
-
-    {
-        std::lock_guard<std::mutex> lock(_sendMutex);
-        if (_queue) {
-            _queue->push("stop");
-            _queue->push("quit");
-            _queue->close();
+    try {
+        if (_state) {
+            _state->stop();
         }
-    }
-
-    if (_thread && _thread->joinable()) {
-        _thread->join();
-    }
-
-    _thread.reset();
-    _queue.reset();
-}
-
-- (void)runEngineLoop {
-    auto handler = self.lineHandler;
-    CallbackOutputBuffer::Callback callback;
-    if (handler) {
-        callback = [handler](const std::string &line) {
-            NSString *value = [[NSString alloc] initWithBytes:line.data()
-                                                       length:line.size()
-                                                     encoding:NSUTF8StringEncoding];
-            if (value) {
-                handler(value);
-            }
-        };
-    }
-
-    QueueInputBuffer inputBuffer(*_queue);
-    CallbackOutputBuffer outputBuffer(std::move(callback));
-    std::istream input(&inputBuffer);
-    std::ostream output(&outputBuffer);
-
-    ArasanEmbedded::RunUCI(input, output);
-
-    if (_queue) {
-        _queue->close();
-    }
-    {
-        std::lock_guard<std::mutex> lock(gActiveEngineMutex);
-        gActiveEngine = false;
+    } catch (...) {
     }
 }
 

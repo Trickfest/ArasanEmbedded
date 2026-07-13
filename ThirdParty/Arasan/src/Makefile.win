@@ -22,13 +22,6 @@ SYZYGY_TBS = 1
 # location of SYZYGY tablebase code
 STB=syzygy\src
 
-# enable NUMA support
-#NUMA=1
-
-# location of hwloc library (needed if NUMA enabled)
-HWLOC64=E:\chess\hwloc-win64-build-2.0.4
-HWLOC32=E:\chess\hwloc-win32-build-2.0.4
-
 # build flags for different instruction sets
 BASIC_SIMD_FLAGS = -DSIMD -DSSE2
 POPCNT_FLAGS = -DUSE_POPCNT -DSSSE3 -DSSE41
@@ -69,9 +62,6 @@ ARASANX = arasanx-32
 !If "$(BUILD_TYPE)" != ""
 ARASANX = $(ARASANX)-$(BUILD_TYPE)
 !Endif
-!Ifdef NUMA
-ARASANX = $(ARASANX)-numa
-!Endif
 !Endif
 
 # Target-specific flags
@@ -100,12 +90,6 @@ SOURCE_ARCHIVE = release\arasan_source$(VERSION).zip
 !If "$(PLATFORM)"=="XP"
 CFLAGS=$(CFLAGS) /D_USING_V110_SDK71_ /DNTDDI_VERSION=0x05010300 /D_WIN32_WINNT=0x0501
 !Endif
-!IfDef NUMA
-CFLAGS=$(CFLAGS) /DNUMA /I$(HWLOC)/include
-NUMA_LIBS=$(HWLOC)/lib/libhwloc.lib
-NUMA_OBJS=$(BUILD)/topo.obj
-NUMA_PROFILE_OBJS=$(PROFILE)/topo.obj
-!Endif
 NETWORK = arasanv8-20260622.nnue
 NNUE_FLAGS=/Innue -DNETWORK=$(NETWORK)
 
@@ -131,7 +115,7 @@ CC = cl
 LD=link
 
 # Linker flags
-LDFLAGS  = $(LDFLAGS) kernel32.lib user32.lib winmm.lib $(NUMA_LIBS) /nologo /incremental:no $(LINKOPT) /stack:4000000 /version:$(LINK_VERSION)
+LDFLAGS  = $(LDFLAGS) kernel32.lib user32.lib winmm.lib /nologo /incremental:no $(LINKOPT) /stack:4000000 /version:$(LINK_VERSION)
 !If "$(PLATFORM)" == "XP"
 !If "$(TARGET)" == "win64"
 LDFLAGS = $(LDFLAGS) /subsystem:console,5.02
@@ -251,7 +235,7 @@ $(BUILD)\movearr.obj $(BUILD)\bookread.obj $(BUILD)\bookwrit.obj \
 $(BUILD)\calctime.obj $(BUILD)\legal.obj $(BUILD)\eco.obj \
 $(BUILD)\learn.obj $(BUILD)\bench.obj \
 $(BUILD)\threadp.obj $(BUILD)\threadc.obj \
-$(TB_OBJS) $(NNUE_OBJS) $(NUMA_OBJS)
+$(TB_OBJS) $(NNUE_OBJS)
 
 ARASANX_PROFILE_OBJS = $(PROFILE)\arasanx.obj $(PROFILE)\tester.obj \
 $(PROFILE)\protocol.obj $(PROFILE)\input.obj \
@@ -266,7 +250,7 @@ $(PROFILE)\movearr.obj $(PROFILE)\bookread.obj $(PROFILE)\bookwrit.obj \
 $(PROFILE)\calctime.obj $(PROFILE)\legal.obj $(PROFILE)\eco.obj \
 $(PROFILE)\learn.obj $(PROFILE)\bench.obj \
 $(PROFILE)\threadp.obj $(PROFILE)\threadc.obj \
-$(NNUE_PROFILE_OBJS) $(TB_PROFILE_OBJS) $(NUMA_PROFILE_OBJS)
+$(NNUE_PROFILE_OBJS) $(TB_PROFILE_OBJS)
 
 UTIL_OBJS = $(BUILD)\globals.obj $(BUILD)\board.obj \
 $(BUILD)\boardio.obj $(BUILD)\material.obj $(BUILD)\chess.obj \

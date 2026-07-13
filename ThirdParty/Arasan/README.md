@@ -54,11 +54,6 @@ well as those required by the "avx2" build.
 
 6. arasanx-64-neon - ARM executable with support for NEON instruction set.
 
-In addition it is possible to build a version with support for NUMA (Non-
-Uniform Memory Access) systems - generally these are large multi-CPU systems.
-NUMA-enabled versions of Arasan require the HWLOC library version 2.0
-or higher: see https://www.open-mpi.org/software/hwloc/v2.0/.
-
 ## Command-line switches
 
 Arasanx recognizes the following command-line options:
@@ -152,8 +147,6 @@ key position results in a file and later retrieving them).
 playing strength.
 - UCI_Elo - desired playing strength, settable from Elo 1000 to Elo 3450. This is
 only effective if UCI_LimitStrength is set true.
-- Set processor affinity - for NUMA builds only. If set true, binds threads to
-cores.
 - Move overhead - value settable from 0 to 1000. This is a value in milliseconds
 that will be subtraced from the time available to make a move. It helps Arasan
 account for network or interface delays in calculating its time usage.
@@ -188,8 +181,6 @@ in the Arasan executable directory (must be writeable).
 key position results in a file and later retrieving them).
 - Learning file - name & location of the file to store position learning data
 - Strength - search strength, settable on a scale of 0 (weakest) to 100 (strongest)
-- Set processor affinity - for NUMA builds only. If set true, binds threads to
-cores.
 - Move overhead - value settable from 0 to 1000. This is a value in milliseconds
 that will be subtraced from the time available to make a move. It helps Arasan
 account for network or interface delays in calculating its time usage.

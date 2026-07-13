@@ -1,5 +1,5 @@
-#ifndef ARASAN_HASH_TESTING_H
-#define ARASAN_HASH_TESTING_H
+#ifndef ARASAN_BRIDGE_TESTING_H
+#define ARASAN_BRIDGE_TESTING_H
 
 #include <stdbool.h>
 
@@ -7,13 +7,10 @@
 extern "C" {
 #endif
 
-int AEHashScoreToHashValueForTesting(int score, int ply);
-int AEMateScoreForTesting(void);
-int AEMateRangeForTesting(void);
-int AEInvalidScoreForTesting(void);
 bool AEOutputFlushPreservesLineForTesting(void);
 bool AEConcurrentOutputPreservesSubmissionOrderForTesting(void);
 bool AEStandardStreamsRestoreForTesting(void);
+bool AEEmbeddedGlobalsAllocatedForTesting(void);
 unsigned long long AECurrentHashBytesForTesting(void);
 int AECurrentThreadCountForTesting(void);
 bool AECurrentPositionLearningForTesting(void);

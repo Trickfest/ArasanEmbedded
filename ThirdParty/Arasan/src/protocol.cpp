@@ -1575,14 +1575,6 @@ void Protocol::processWinboardOptions(const std::string &args) {
     } else if (name == "NNUE File") {
         Options::setOption<std::string>(value,globals::options.search.nnueFile);
         globals::nnueInitDone = false; // force re-init
-#ifdef NUMA
-    } else if (name == "Set processor affinity") {
-       int tmp = globals::options.search.set_processor_affinity;
-       Options::setOption<bool>(value,globals::options.search.set_processor_affinity);
-       if (tmp != globals::options.search.set_processor_affinity) {
-           searcher->recalcBindings();
-       }
-#endif
     }
     else if (name == "Move overhead") {
         Options::setOption<int>(value,globals::options.search.move_overhead);
@@ -1722,10 +1714,6 @@ bool Protocol::do_command(const std::string &cmd, Board &board) {
         std::cout << "option name UCI_Elo type spin default " << globals::options.getRating(globals::options.search.strength) <<
             " min " << Options::MIN_RATING << " max " << Options::MAX_RATING << std::endl;
         std::cout << "option name NNUE file type string default " << globals::options.search.nnueFile << std::endl;
-#ifdef NUMA
-        std::cout << "option name Set processor affinity type check default " <<
-           (globals::options.search.set_processor_affinity ? "true" : "false") << std::endl;
-#endif
         std::cout << "option name Move overhead type spin default " <<
             30 << " min 0 max 1000" << std::endl;
 #ifdef TUNE
@@ -1876,15 +1864,6 @@ bool Protocol::do_command(const std::string &cmd, Board &board) {
            Options::setOption<std::string>(value,globals::options.search.nnueFile);
            globals::nnueInitDone = false; // force re-init
 	}
-#ifdef NUMA
-        else if (uciOptionCompare(name,"Set processor affinity")) {
-           int tmp = globals::options.search.set_processor_affinity;
-           Options::setOption<bool>(value, globals::options.search.set_processor_affinity;
-           if (tmp != globals::options.search.set_processor_affinity) {
-               searcher->recalcBindings();
-           }
-        }
-#endif
         else if (uciOptionCompare(name,"Move overhead")) {
            Options::setOption<int>(value,globals::options.search.move_overhead);
         }
@@ -2433,10 +2412,6 @@ bool Protocol::do_command(const std::string &cmd, Board &board) {
         // strength option (new for 14.2)
         std::cout << " option=\"Strength -spin " << globals::options.search.strength << " 0 100\"";
         std::cout << " option=\"NNUE file -string " << globals::options.search.nnueFile << "\"";
-#ifdef NUMA
-        std::cout << " option=\"Set processor affinity -check " <<
-            globals::options.search.set_processor_affinity << "\"" << std::endl;
-#endif
         std::cout << " option=\"Move overhead -spin " << 30 << " 0 1000\"";
         std::cout << " myname=\"" << "Arasan " << Arasan_Version << "\"" << std::endl;
         // set done = 0 because it may take some time to initialize tablebases.

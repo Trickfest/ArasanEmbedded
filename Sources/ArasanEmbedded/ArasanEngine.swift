@@ -8,6 +8,12 @@ import Foundation
 /// policy narrow: it starts and stops Arasan, applies resource-related UCI
 /// options, and sends caller-provided UCI commands. It does not parse UCI output
 /// into chess models or own game state.
+///
+/// Arasan uses process-global state and standard streams, so only one engine may
+/// be active in a process at a time. Output is delivered in order on a
+/// wrapper-owned serial background queue. `stop()` blocks until native teardown
+/// completes, is safe from the line handler, and may be called repeatedly. A
+/// stopped instance may be started again.
 public final class ArasanEngine: @unchecked Sendable {
     public typealias LineHandler = @Sendable (String) -> Void
 
@@ -19,8 +25,10 @@ public final class ArasanEngine: @unchecked Sendable {
     /// - Parameters:
     ///   - configuration: Resource and option configuration to apply after the
     ///     engine enters UCI mode.
-    ///   - lineHandler: Called for each UCI output line on Arasan's engine
-    ///     thread. Dispatch to the main actor before updating UI.
+    ///   - lineHandler: Called for each UCI output line in order on a
+    ///     wrapper-owned serial background queue. Dispatch to the main actor
+    ///     before updating UI, and use a weak capture when retaining the engine
+    ///     from an object owned by this handler.
     public init(
         configuration: Configuration = .default,
         lineHandler: @escaping LineHandler
@@ -47,18 +55,21 @@ public final class ArasanEngine: @unchecked Sendable {
     /// before starting searches.
     public func start() throws {
         try configuration.validate()
-        guard core.start() else {
+        let startupCommands = ["uci"] + configuration.uciOptionCommands + ["isready"]
+        guard core.startEngine(commands: startupCommands) else {
             throw Error.startFailed
         }
-
-        sendCommand("uci")
-        for command in configuration.uciOptionCommands {
-            sendCommand(command)
-        }
-        sendCommand("isready")
     }
 
-    /// Sends one UCI command line to Arasan.
+    /// Sends one trusted UCI command line to Arasan.
+    ///
+    /// One optional trailing LF or CRLF is accepted. Empty commands are
+    /// ignored; embedded NULs, multiline input, commands larger than 1 MiB, and
+    /// runtime NNUE-file changes are rejected through an `info string
+    /// ArasanEmbedded error` callback. Create a fresh configured engine to use a
+    /// different NNUE file. The embedded wrapper also rejects `Threads`
+    /// changes and keeps Arasan at one search thread for safe native teardown.
+    /// Do not pass untrusted user text directly to UCI.
     public func sendCommand(_ command: String) {
         core.sendCommand(command)
     }
@@ -66,6 +77,12 @@ public final class ArasanEngine: @unchecked Sendable {
     /// Requests a normal UCI shutdown and tears down the engine loop.
     public func stop() {
         core.stop()
+    }
+
+    /// Native engine-thread stack size, exposed internally for regression
+    /// coverage of Arasan's 4 MiB minimum.
+    var engineThreadStackSize: Int {
+        Int(core.engineThreadStackSize)
     }
 }
 
@@ -123,11 +140,17 @@ public extension ArasanEngine {
         return url
     }
 
+    /// Errors detected before or while starting the embedded engine.
     enum Error: Swift.Error, Equatable, LocalizedError {
+        /// The native process-wide engine slot or thread could not be started.
         case startFailed
+        /// The configured NNUE file does not exist.
         case missingNNUE(URL)
+        /// Opening-book mode named an explicit file that does not exist.
         case missingOpeningBook(URL)
+        /// The configured tablebase directory does not exist.
         case missingTablebaseDirectory(URL)
+        /// The configured Syzygy probe depth is outside Arasan's range.
         case invalidTablebaseProbeDepth(Int)
 
         public var errorDescription: String? {
@@ -174,17 +197,34 @@ extension ArasanEngine.Configuration {
         guard nnueURL.isExistingFile else {
             throw ArasanEngine.Error.missingNNUE(nnueURL)
         }
+        guard nnueURL.hasSafeUCIPath else {
+            throw ArasanConfigurationValidationError.invalidResourcePath(nnueURL)
+        }
+        guard nnueURL.isCompatibleArasanNNUE else {
+            throw ArasanConfigurationValidationError.invalidNNUE(nnueURL)
+        }
 
-        if useOpeningBook, let openingBookURL, !openingBookURL.isExistingFile {
-            throw ArasanEngine.Error.missingOpeningBook(openingBookURL)
+        if let openingBookURL {
+            guard openingBookURL.hasSafeUCIPath else {
+                throw ArasanConfigurationValidationError.invalidResourcePath(openingBookURL)
+            }
+            if useOpeningBook, !openingBookURL.isExistingFile {
+                throw ArasanEngine.Error.missingOpeningBook(openingBookURL)
+            }
         }
 
         if useTablebases {
-            guard let tablebaseDirectoryURL, tablebaseDirectoryURL.isExistingDirectory else {
-                throw ArasanEngine.Error.missingTablebaseDirectory(
-                    tablebaseDirectoryURL ?? URL(fileURLWithPath: "")
-                )
+            guard let tablebaseDirectoryURL else {
+                throw ArasanConfigurationValidationError.missingTablebaseDirectoryURL
             }
+            guard tablebaseDirectoryURL.hasSafeUCIPath else {
+                throw ArasanConfigurationValidationError.invalidResourcePath(tablebaseDirectoryURL)
+            }
+            guard tablebaseDirectoryURL.isExistingDirectory else {
+                throw ArasanEngine.Error.missingTablebaseDirectory(tablebaseDirectoryURL)
+            }
+        } else if let tablebaseDirectoryURL, !tablebaseDirectoryURL.hasSafeUCIPath {
+            throw ArasanConfigurationValidationError.invalidResourcePath(tablebaseDirectoryURL)
         }
 
         if let tablebaseProbeDepth, !(0...64).contains(tablebaseProbeDepth) {
@@ -193,7 +233,27 @@ extension ArasanEngine.Configuration {
     }
 }
 
+enum ArasanConfigurationValidationError: Swift.Error, Equatable, LocalizedError {
+    case invalidNNUE(URL)
+    case missingTablebaseDirectoryURL
+    case invalidResourcePath(URL)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidNNUE(let url):
+            "The configured file is not a compatible Arasan NNUE network: \(url.path)"
+        case .missingTablebaseDirectoryURL:
+            "Tablebases were enabled, but no tablebase directory was provided."
+        case .invalidResourcePath(let url):
+            "The configured resource path cannot be represented as one UCI command: \(url.path)"
+        }
+    }
+}
+
 private extension URL {
+    static let arasanNNUEByteCount = 25_024_576
+    static let arasanNNUEHeader = Data([0x41, 0x52, 0x41, 0x08])
+
     var isExistingFile: Bool {
         var isDirectory = ObjCBool(false)
         return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
@@ -204,5 +264,32 @@ private extension URL {
         var isDirectory = ObjCBool(false)
         return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
             && isDirectory.boolValue
+    }
+
+    var hasSafeUCIPath: Bool {
+        !path.isEmpty
+            && path.utf8.count <= 1024 * 1024
+            && !path.contains("\0")
+            && !path.contains("\r")
+            && !path.contains("\n")
+            && path.last?.isWhitespace == false
+    }
+
+    var isCompatibleArasanNNUE: Bool {
+        guard let handle = try? FileHandle(forReadingFrom: self) else {
+            return false
+        }
+        defer { try? handle.close() }
+
+        guard let size = try? handle.seekToEnd(), size == UInt64(Self.arasanNNUEByteCount) else {
+            return false
+        }
+        do {
+            try handle.seek(toOffset: 0)
+            let header = try handle.read(upToCount: Self.arasanNNUEHeader.count)
+            return header == Self.arasanNNUEHeader
+        } catch {
+            return false
+        }
     }
 }

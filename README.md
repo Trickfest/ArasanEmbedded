@@ -13,7 +13,8 @@ needs a permissively licensed in-process engine.
 
 This repository is a SwiftPM-first embedded Arasan package for iOS, iPadOS, and
 macOS. It includes a root `Package.swift`, SPI metadata, semantic-versioned
-releases, package tests, CI, and product documentation.
+releases, package tests, an optional manually dispatched GitHub Actions
+workflow, and product documentation.
 
 `ArasanEmbedded` is suitable for Swift Package Index submission. SPI indexing
 requires the GitHub repository to be public and a semantic version tag to be
@@ -25,6 +26,8 @@ available on the default branch.
 - Xcode 26 or newer
 - iOS/iPadOS 26 or newer
 - macOS 26 or newer
+- Apple Silicon/arm64 build targets. Intel macOS and x86_64 simulator builds
+  are not supported by the current package build configuration.
 
 ## Installation
 
@@ -61,6 +64,40 @@ engine.stop()
 `isready`. A production app should wait for `uciok` and `readyok` before
 starting a search.
 
+## Runtime Contract
+
+Arasan uses process-global state and temporarily redirects the process's C++
+standard streams. Run only one `ArasanEngine` at a time in a process. The
+wrapper enforces that policy within one linked copy of this package; an app
+must not load multiple copies and run them concurrently.
+
+The line handler runs in protocol order on a wrapper-owned serial background
+queue, not the main actor. Dispatch UI updates to the main actor. `stop()` is
+idempotent and safe to call from the line handler, but it blocks until native
+teardown completes, so UI code should call it away from the main actor. A
+stopped instance can be started again.
+
+The engine receives an explicit 4 MiB pthread stack without changing the host
+process's stack resource limit. The embedded entry point intentionally calls the
+package-owned `initArasanEmbeddedGlobals()` instead of upstream
+`globals::initGlobals()`: upstream's version attempts a process-wide stack-limit
+increase that physical Apple devices can reject even though the explicitly
+sized engine thread is valid. The package-owned initializer mirrors the
+upstream function's non-stack initialization and must be reconciled whenever
+the vendored engine is updated.
+
+`sendCommand(_:)` accepts one trusted UCI command line. It rejects multiline
+input, embedded NULs, commands larger than 1 MiB, and runtime attempts to
+replace the NNUE network. Create a newly configured engine when changing NNUE,
+and do not pass untrusted user text directly to UCI. The wrapper also fixes
+Arasan's `Threads` option at `1`: the current vendored pool cannot safely shrink
+an in-process worker during teardown without a vendor change.
+
+`ArasanSoakRunner` also serializes its event handler on the protocol-consumption
+path. Keep that handler fast and dispatch logging or other slow work elsewhere;
+blocking it can delay response recognition and grow the in-memory output
+backlog.
+
 ## Runtime Assets
 
 Arasan uses several optional or required runtime assets. `ArasanEmbedded` makes
@@ -80,6 +117,13 @@ let engine = ArasanEngine(configuration: .default) { line in
 
 That uses the bundled NNUE file, disables opening book moves, and disables
 tablebase probing.
+
+Before startup, the wrapper checks that the configured NNUE is a regular file
+with the byte count and format header required by this vendored Arasan
+snapshot. Caller-provided NNUE paths must remain stable until startup has
+finished. Opening-book and tablebase paths are also constrained to one safe UCI
+line; the wrapper validates their existence when the related feature is
+enabled, but it does not checksum caller-provided assets.
 
 ## Opening Book
 
@@ -147,9 +191,14 @@ See `Docs/Tablebases.md` for iOS/macOS storage guidance and failure behavior.
 
 ## Testing
 
-See `Docs/Testing.md` for the full local release gate, Swift Testing suite
-structure, `arasan-smoke`, `arasan-soak`, CI coverage, and the Lichess-derived
-regression corpus.
+Run `Scripts/validate.sh` for the complete offline release gate. See
+`Docs/Testing.md` for its individual checks, Swift Testing suite structure,
+`arasan-smoke`, `arasan-soak`, optional external-asset coverage, optional manual
+GitHub-hosted validation, and the Lichess-derived regression corpus.
+
+GitHub-hosted validation is optional, manual-only, and nonblocking. Dispatch an
+already-published branch or tag with `Scripts/run-github-ci.sh [branch-or-tag]`;
+the helper never commits or pushes local work.
 
 ## Relationship To SwiftChessTools
 
@@ -169,6 +218,11 @@ used in a realistic SwiftUI chess-playing experience.
 
 Package-owned code is MIT licensed. The vendored Arasan engine source, selected
 upstream documentation, bundled NNUE file, and Fathom Syzygy probing source keep
-their upstream notices. GUI/font assets, upstream test suites, tools, and
-opening-book source material are intentionally not vendored into this package.
-See `LICENSE` and `Docs/Provenance.md`.
+their upstream notices. The retained core source tree includes upstream utility
+sources used to regenerate the opening-book fixture; those utilities are not
+library products. GUI/font assets, external upstream test corpora, and
+opening-book source material are intentionally not vendored.
+
+Source and binary distributions must preserve the package, Arasan, and Fathom
+license notices. See `LICENSE`, `ThirdParty/Arasan/LICENSE`,
+`ThirdParty/Arasan/src/syzygy/LICENSE`, and `Docs/Provenance.md`.

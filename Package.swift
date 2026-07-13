@@ -75,11 +75,16 @@ let package = Package(
                 .headerSearchPath("ThirdParty/Arasan/src/syzygy/src"),
                 .define("_64BIT"),
                 .define("SYZYGY_TBS"),
+                // The vendored NNUE implementation requires one explicit SIMD
+                // backend. This package currently supports Apple arm64 targets;
+                // PackageDescription has no target-architecture condition for
+                // selecting NEON versus SSE on a universal macOS build.
                 .define("SIMD"),
                 .define("NEON"),
                 .define("ARASAN_EMBEDDED_STREAM_INPUT"),
-                .define("ARASAN_VERSION", to: "embedded-master-c4bfcab0"),
+                .define("ARASAN_VERSION", to: "embedded-master-c51273aa"),
                 .define("NETWORK", to: "arasanv8-20260622.nnue"),
+                .define("NDEBUG", .when(configuration: .release)),
             ],
             linkerSettings: [
                 .linkedLibrary("c++"),
@@ -98,16 +103,25 @@ let package = Package(
         ),
         .executableTarget(
             name: "ArasanSoak",
-            dependencies: ["ArasanEmbedded"]
+            dependencies: ["ArasanEmbedded"],
+            resources: [
+                .copy("../../Resources/Soak/lichess_puzzles.tsv"),
+            ]
         ),
         .target(
             name: "CArasanEmbeddedTestSupport",
+            dependencies: ["CArasanEmbedded"],
             path: "Tests/CArasanEmbeddedTestSupport",
-            sources: ["ArasanHashTesting.cpp"],
+            sources: ["ArasanBridgeTesting.cpp", "ArasanHashTesting.cpp"],
             publicHeadersPath: "include",
             cxxSettings: [
                 .headerSearchPath("../../ThirdParty/Arasan/src"),
+                .headerSearchPath("../../ThirdParty/Arasan/src/nnue"),
+                .headerSearchPath("../../Sources/CArasanEmbedded"),
                 .define("_64BIT"),
+                .define("SIMD"),
+                .define("NEON"),
+                .define("SYZYGY_TBS"),
             ]
         ),
         .testTarget(

@@ -44,9 +44,6 @@ class Options {
         int multipv;
         int ncpus;
         std::string nnueFile;
-#ifdef NUMA
-        bool set_processor_affinity; // lock threads to processors
-#endif
         int move_overhead;       // in milliseconds
         int minimum_search_time; // in milliseconds
         int widePlies;           // do wide search for this number of plies

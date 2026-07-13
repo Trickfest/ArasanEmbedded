@@ -565,12 +565,6 @@ public:
        return *stats;
    }
 
-#ifdef NUMA
-   void recalcBindings() {
-       pool->recalcBindings();
-   }
-#endif
-
    bool debugOut() const noexcept {
       return talkLevel == TalkLevel::Debug;
    }

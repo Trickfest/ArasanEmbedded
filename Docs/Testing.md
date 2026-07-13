@@ -1,26 +1,49 @@
 # Testing
 
-`ArasanEmbedded` uses non-GUI tests to validate the Swift wrapper, the embedded
-Arasan UCI lifecycle, bundled NNUE loading, runtime asset options, and repeated
-search behavior. There are no Objective-C or GUI tests because the package is
-SwiftPM-first and exposes a Swift-facing API.
+`ArasanEmbedded` uses Swift Testing plus small native bridge probes to validate
+the Swift wrapper, embedded Arasan UCI lifecycle, bundled NNUE loading, runtime
+asset options, host stream-state restoration, and repeated search behavior. It
+has no GUI test target because the package is SwiftPM-first and exposes a
+Swift-facing API.
 
 ## Full Local Release Gate
 
 Run this gate before a public release or before committing behavior changes:
 
 ```sh
-swift package dump-package
-swift build
-swift test
-swift run arasan-smoke --depth 1
-swift run arasan-soak --iterations 5 --movetime 500
-xcodebuild -scheme ArasanEmbedded -configuration Debug -destination 'platform=iOS Simulator,name=iPhone 17 Pro,OS=latest' -derivedDataPath .build/xcode-ios build
+Scripts/validate.sh
 ```
 
-`swift test` runs the Swift Testing suite. The two CLI commands exercise the
-package as a consumer would, and the iOS simulator build verifies that the
-SwiftPM package continues to build for iOS/iPadOS.
+The script validates the manifest; performs Debug and Release builds; confirms
+Release binaries do not import native assertions; runs the normal and Thread
+Sanitizer suites; exercises both CLIs, a child-process startup with a constrained
+stack limit, and invalid-input paths; builds for an iOS simulator and a generic
+iOS device; checks the public API against the configured `v1.0.6` baseline; and
+verifies all three required worktree
+license files. On a clean checkout it also checks those licenses inside the
+committed SwiftPM source archive. `swift package archive-source` archives Git
+HEAD rather than dirty/untracked files, so the script explicitly skips that
+archive assertion during pre-commit work. It uses `iPhone 17 Pro` by default;
+set `ARASAN_IOS_SIMULATOR_NAME` to another available simulator when needed.
+
+The simulator runs inside a macOS host process, so a successful simulator build
+or launch does not exercise every physical iOS process limit. Changes to native
+startup, global initialization, or thread creation require the physical-device
+consumer smoke below in addition to `Scripts/validate.sh`.
+
+## Physical iOS Consumer Smoke
+
+Before releasing a change to native startup or thread creation:
+
+1. Use a disposable copy of `SwiftChessDemo` that resolves `ArasanEmbedded` to
+   this local checkout. Do not commit the package override.
+2. Build and run the app on a physical iPhone or iPad.
+3. Run Arasan versus Arasan for at least 50 plies.
+4. Run a mixed Stockfish-versus-Arasan game long enough for each engine to move
+   several times.
+5. Confirm the app remains alive, both engines continue returning `bestmove`,
+   and no Arasan startup error appears.
+6. Restore the normally resolved package before finishing.
 
 ## Swift Testing Suite
 
@@ -32,6 +55,8 @@ The package tests live in `Tests/ArasanEmbeddedTests`.
 - opening-book options build the expected UCI commands
 - Syzygy tablebase options build the expected UCI commands
 - missing NNUE/book/tablebase paths are rejected before engine start
+- incompatible NNUE files and unsafe multiline/trailing-whitespace resource
+  paths are rejected
 - invalid tablebase probe depth is rejected
 
 `LichessCorpusTests.swift` covers the curated Lichess corpus:
@@ -57,12 +82,26 @@ The package tests live in `Tests/ArasanEmbeddedTests`.
 - material-imbalance searches produce large centipawn scores with the expected
   sign
 - start and stop are predictable and idempotent where expected
+- callback-initiated, concurrent, raw-`quit`, release-without-stop, and restart
+  lifecycle paths complete safely
+- the native engine thread receives Arasan's required 4 MiB stack while the
+  package-owned embedded initializer supports repeated startup and teardown
 - commands before start and after stop are ignored safely
+- malformed, multiline, NUL-containing, oversized, and runtime-NNUE commands
+  are rejected without corrupting the UCI session
+- runtime `Threads` changes are rejected so native teardown never inherits an
+  unsafe dynamically resized vendor pool
 - `uci` can be issued again after startup
-- concurrent command enqueue does not deadlock
+- concurrent command enqueue and repeated ready probes do not deadlock or lose
+  replies
 - back-to-back searches return best moves
 - UCI `stop` during a bounded search returns a valid best move promptly
-- `ArasanSoakRunner` completes a short in-process run
+- process-global options and host C++ stream state are restored between runs
+- live option values are checked before and after reset
+- output flushes do not invent protocol lines, and callbacks remain ordered
+- `ArasanSoakRunner` validates input, handles task cancellation and concurrent
+  run rejection, preserves timeout-boundary results, emits terminal events in
+  order, and cannot attribute a stale `bestmove` to a later search
 - a tiny generated `book.bin` fixture supplies a real opening-book best move
 - every normalized position returns an allowed move at depth 4
 - optional downloaded Syzygy fixtures produce real `tbhits` output
@@ -89,12 +128,17 @@ Examples:
 
 ```sh
 swift run arasan-smoke --depth 1
-swift run arasan-smoke --fen "8/8/8/8/8/8/4K3/4k3 w - - 0 1" --depth 4
+swift run arasan-smoke --fen "6k1/8/8/8/8/8/8/6KQ w - - 0 1" --depth 4
 swift run arasan-smoke --book /path/to/book.bin --depth 8
 swift run arasan-smoke --tablebases /path/to/syzygy --probe-depth 4 --fen "<endgame fen>"
 ```
 
 Use this when you want the fastest real-engine sanity check.
+
+The release gate also launches the already-built smoke executable in a child
+process with a 2 MiB soft and hard stack resource limit. That regression proves
+the package-owned entry path does not call upstream `globals::initGlobals()`,
+which would attempt a forbidden increase to 4 MiB and terminate the process.
 
 ## Opening Book Fixture
 
@@ -139,13 +183,17 @@ Useful options:
 - `--handshake-timeout SECONDS`: Timeout waiting for `uciok` or `readyok`.
 - `--delay-ms MS`: Delay between iterations.
 - `--ready-each`: Send `isready` before every search.
-- `--continue-on-timeout`: Continue after a timeout instead of failing fast.
+- `--continue-on-timeout`: Continue only after `stop` produces that search's
+  terminal `bestmove`; an unrecovered timeout always ends the run.
 - `--log-output`: Print raw engine output.
 
-The short CI run uses:
+Timeout and delay values must fit between zero (where allowed) and one year;
+larger finite values are rejected before conversion to Swift `Duration`.
+
+The short validation soak uses:
 
 ```sh
-swift run arasan-soak --iterations 5 --movetime 250
+swift run arasan-soak --iterations 5 --movetime 500
 ```
 
 Longer local soaks are useful before release candidates:
@@ -216,19 +264,25 @@ opponent's forcing move. The committed `fen` column is after applying the first
 UCI move from the Lichess `Moves` field, and `expected_move` is the second UCI
 move.
 
-## CI
+## Optional Manual GitHub Validation
 
-GitHub Actions runs the practical public gate:
+GitHub Actions does not run for pushes or pull requests. The manual workflow is
+an optional, nonblocking secondary check and is not part of task, merge, or
+release acceptance. It runs the same complete offline `Scripts/validate.sh`
+gate on a macOS 26 runner with a deliberately short soak.
 
-- validate the package manifest
-- build the package
-- run `swift test`
-- run `arasan-smoke`
-- run a short `arasan-soak`
-- build the iOS simulator package product
+To dispatch an already-published branch or tag:
 
-CI intentionally keeps the soak short. Longer soak runs belong in local release
-validation.
+```sh
+Scripts/run-github-ci.sh [branch-or-tag]
+```
+
+The helper verifies GitHub CLI authentication and that the remote ref contains
+the manual workflow. It does not commit or push local work. The command prints
+GitHub's run URL when available, plus a workflow-runs URL as a fallback.
+Unavailable GitHub Actions credits or a failed hosted run do not block local
+acceptance. Optional Syzygy downloads and longer soak runs remain explicit
+local checks.
 
 ## Adding Tests
 

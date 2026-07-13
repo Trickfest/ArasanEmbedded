@@ -101,5 +101,5 @@ Testing commands.
 swift run arasan-smoke \
   --tablebases /Users/me/Chess/Syzygy345 \
   --probe-depth 4 \
-  --fen "8/8/8/8/8/8/4K3/4k3 w - - 0 1"
+  --fen "6k1/8/8/8/8/8/8/6KQ w - - 0 1"
 ```

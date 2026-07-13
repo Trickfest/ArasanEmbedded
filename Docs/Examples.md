@@ -26,7 +26,7 @@ bestmove ...
 
 ```swift
 try engine.start()
-engine.sendCommand("position fen 8/8/8/8/8/8/4K3/4k3 w - - 0 1")
+engine.sendCommand("position fen 6k1/8/8/8/8/8/8/6KQ w - - 0 1")
 engine.sendCommand("go depth 4")
 ```
 
@@ -113,11 +113,16 @@ final class EngineHarnessModel: ObservableObject {
     }
 
     func stop() {
-        engine?.stop()
-        engine = nil
+        let engine = engine
+        self.engine = nil
+        Task.detached(priority: .userInitiated) {
+            engine?.stop()
+        }
     }
 }
 ```
 
 This pattern is appropriate for an iOS/macOS smoke app. A production app should
 usually parse output with `ChessUCI` and keep board state in `ChessCore`.
+`stop()` waits for native teardown, so the example deliberately performs it
+away from the main actor.

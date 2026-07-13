@@ -6,9 +6,6 @@
 #include "bitboard.h"
 #include "threadc.h"
 #include "constant.h"
-#ifdef NUMA
-#include "topo.h"
-#endif
 #include <array>
 #include <atomic>
 #include <bitset>
@@ -101,18 +98,6 @@ public:
       return data[0];
    }
 
-#ifdef NUMA
-   int bind(int index) {
-     return topo.bind(data[index]);
-   }
-
-   void recalcBindings() {
-     topo.recalc();
-     // set flags so threads will be rebound
-     rebindMask.set();
-   }
-#endif
-
    uint64_t totalNodes() const;
 
    uint64_t totalHits() const;
@@ -170,10 +155,6 @@ private:
    pthread_attr_t stackSizeAttrib;
 #endif
 
-#ifdef NUMA
-   static std::bitset<Constants::MaxCPUs> rebindMask;
-   Topology topo;
-#endif
 };
 
 #ifdef _THREAD_TRACE

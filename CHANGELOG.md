@@ -1,5 +1,79 @@
 # Changelog
 
+## 1.1.0 - 2026-07-13
+
+### Added
+
+- Add one-command offline validation covering Debug and Release builds, native
+  assertion stripping, normal and Thread Sanitizer tests, CLI smoke and soak
+  runs, simulator and generic iOS builds, API compatibility, and source-archive
+  license contents.
+- Add `Scripts/run-github-ci.sh` to manually dispatch optional GitHub-hosted
+  validation for an existing remote branch or tag without committing or pushing.
+- Add regression coverage for callback-safe shutdown, raw `quit`, restart,
+  concurrent lifecycle calls, process-option reset, command validation,
+  callback ordering and suppression, stream framing/restoration, native stack
+  size, wrapper-owned global initialization, startup under a constrained host
+  stack limit, soak cancellation and event ordering, timeout recovery, and
+  CLI/corpus validation.
+- Package the default Lichess-derived corpus with `arasan-soak`, so an installed
+  executable can run without relying on the source checkout.
+
+### Changed
+
+- Refresh vendored Arasan source to upstream `master` commit
+  `c51273aa812c38bd54460adf68f2e15c32e74d71`, including removal of its
+  unmaintained NUMA-only code.
+- Deliver engine output in order on a wrapper-owned serial background queue and
+  start each configured engine with one atomic UCI command batch.
+- Make lifecycle operations serialized and restartable, enforce one active
+  engine per linked package copy, use a 4 MiB native engine-thread stack, and
+  make `stop()` idempotent, callback-safe, and blocking through teardown.
+- Replace upstream `globals::initGlobals()` in the embedded entry path with the
+  package-owned `initArasanEmbeddedGlobals()`, which mirrors its non-stack
+  initialization without modifying vendored source.
+- Validate NNUE format, resource paths, raw UCI commands, soak settings, FEN
+  input, CLI numeric arguments, and external-asset manifests before native
+  engine work begins.
+- Require every timed-out soak search to reach its terminal `bestmove` before
+  another position can start, and serialize structured event delivery.
+- Build native assertions out of Release configurations while retaining them in
+  Debug, and document the current Apple arm64 architecture boundary.
+- Fix embedded searches at one Arasan thread because the current vendored pool
+  cannot safely shrink a dynamically created worker during in-process teardown.
+- Keep GitHub-hosted validation optional, manual-only, and nonblocking while
+  running the complete validation script with release-tag history available for
+  API comparison.
+
+### Fixed
+
+- Prevent handler-initiated shutdown from joining the callback's own thread and
+  eliminate start/stop/restart races, early-returning concurrent stops, queued
+  command backlog during shutdown, and stale callbacks after stop.
+- Reset Arasan's process-global options between instances and fully restore the
+  host process's C++ stream buffers, ties, locale, format flags, and state.
+- Release Fathom tablebase mappings during teardown.
+- Prevent physical Apple hosts from terminating during Arasan startup by
+  avoiding process-wide stack resource changes and using the explicitly sized
+  engine thread instead.
+- Treat output flushes as flushes rather than fabricated newlines, synchronize
+  shared output framing, and preserve partial final output safely.
+- Contain recoverable NNUE, tablebase, engine-thread, and native exception
+  failures at the package boundary instead of allowing vendor fatal exits.
+- Make CLI failures return a normal nonzero status, harden fixture scripts, and
+  cap corpus reads even through symlinks, remove false-positive soak success
+  paths, and prevent stale-`bestmove` attribution.
+
+### Compatibility
+
+- Existing public entry points remain available, including recovered-timeout
+  continuation, and `ArasanSoakRunner.stop()` is additive. New resource
+  validation failures use an internal `LocalizedError`, preserving exhaustive
+  switches over the existing public `ArasanEngine.Error` cases. Runtime NNUE
+  changes through raw UCI are now rejected; create a new configured engine
+  instead. Runtime `Threads` changes are also rejected, and embedded searches
+  remain at one engine thread.
+
 ## 1.0.6 - 2026-07-05
 
 - Update vendored Arasan source to upstream `master` commit

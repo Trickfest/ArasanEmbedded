@@ -15,9 +15,10 @@ Record the commit SHA and commit message.
 ## 2. Re-vendor Source
 
 Copy only the package-relevant upstream material into `ThirdParty/Arasan`.
-This keeps the Swift package focused on the embedded engine wrapper and avoids
-vendoring GUI/font assets, upstream tests, tools, and opening-book source
-material:
+The core `src` tree intentionally retains `src/util`; `makebook` is used for the
+package's opening-book fixture even though the utility programs are not package
+products. Avoid vendoring GUI/font assets, external test corpora, and
+opening-book source material:
 
 ```sh
 rm -rf ThirdParty/Arasan
@@ -37,6 +38,8 @@ cp /tmp/arasan-chess/network/<current-network>.nnue ThirdParty/Arasan/network/
 
 Keep the Fathom Syzygy source materialized under `ThirdParty/Arasan/src/syzygy`.
 Do not copy nested `.git` directories from the `src/syzygy` submodule.
+Record the exact `jdart1/Fathom` commit in `Docs/Provenance.md` rather than only
+recording the parent Arasan commit.
 
 ## 3. Check Runtime Assets
 
@@ -52,6 +55,16 @@ If Arasan changed the default NNUE:
 - update `ArasanEngine.defaultNNUEURL`
 - keep only the current required NNUE resource
 - update `README.md` and `Docs/Provenance.md`
+- update the expected byte count and format header in
+  `Sources/ArasanEmbedded/ArasanEngine.swift`
+- update the native startup preflight constants in
+  `Sources/CArasanEmbedded/AEEngine.mm`
+- update the pinned filename, byte count, and SHA-256 in
+  `Scripts/validate.sh`
+
+Always record the network byte count and SHA-256 in `Docs/Provenance.md` and
+confirm the resource in a clean package build. The format preflight deliberately
+tracks the current vendored snapshot; it is not a generic NNUE parser.
 
 Opening books and Syzygy tablebases are caller-provided runtime options and are
 not bundled by default.
@@ -62,6 +75,18 @@ Compare `ThirdParty/Arasan/src/arasanx.cpp` with
 `Sources/CArasanEmbedded/ArasanEmbeddedUCI.cpp`. The shim should continue to
 match Arasan's initialization sequence while redirecting UCI input/output to
 the wrapper streams.
+
+The embedded entry path intentionally calls the package-owned
+`initArasanEmbeddedGlobals()` instead of upstream `globals::initGlobals()`.
+Upstream's function mutates the process-wide stack resource limit and can call
+`exit(-1)` when a physical Apple device rejects that change; `AEEngine` instead
+creates the UCI loop on an explicit 4 MiB pthread. On every upstream refresh,
+compare `globals::initGlobals()` with `initArasanEmbeddedGlobals()` and carry
+forward all non-stack initialization changes. Compare `globals::cleanupGlobals()`
+as well so allocation and teardown remain symmetric, and confirm Arasan's
+required thread-stack size has not changed. Do not copy the process-wide
+stack-limit block into the embedded initializer, and keep the source comment
+that records this replacement.
 
 ## 5. Reconcile Local Vendored Adjustments
 
@@ -81,4 +106,21 @@ workaround should not be reintroduced.
 
 ## 6. Validate
 
-Run the full local release gate from `Docs/Testing.md`.
+Confirm that the explicit native source list in `Package.swift` still matches
+the upstream engine entry path. Keep Release-only `NDEBUG` and the current
+compile-time SIMD backend in view. The package presently supports Apple arm64
+targets only; adding x86_64 requires an explicit, tested per-architecture
+backend design rather than global unsafe flags or a casual vendor edit.
+
+Run the full local release gate:
+
+```sh
+Scripts/validate.sh
+```
+
+When preparing a new release, update the script's default `API_BASELINE` to the
+most recent released tag that existing consumers may be using. The
+`ARASAN_API_BASELINE_TAG` environment variable can override it for an ad hoc
+comparison.
+
+Then run `Scripts/test-external-assets.sh` when tablebase integration changed.

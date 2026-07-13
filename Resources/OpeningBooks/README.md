@@ -17,4 +17,6 @@ Scripts/regenerate-opening-book-fixture.sh
 ```
 
 The binary is committed because it is tiny and keeps the default Swift Testing
-suite offline and deterministic.
+suite offline and deterministic. Regeneration writes to a temporary output and
+replaces the committed fixture only after `makebook` succeeds and produces a
+nonempty file.

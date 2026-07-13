@@ -21,6 +21,10 @@ The committed TSV contains only a tiny subset selected for wrapper soak tests
 and deterministic search regression tests. See `../../Docs/Testing.md` for test
 suite usage and curation policy.
 
+The same TSV is packaged as an `arasan-soak` executable resource, so the CLI's
+default corpus works when invoked outside the source checkout. Explicit corpus
+paths remain relative to the caller's current working directory.
+
 ## Normalization
 
 Lichess puzzle rows use this format:

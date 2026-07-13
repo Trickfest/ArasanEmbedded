@@ -29,9 +29,6 @@ Options::SearchOptions::SearchOptions()
 #endif
       strength(100), multipv(1), ncpus(1),
       nnueFile(MAKE_STR(NETWORK)),
-#ifdef NUMA
-      set_processor_affinity(false),
-#endif
       move_overhead(30), minimum_search_time(10), widePlies(4),
       wideWindow(10 * Scoring::PAWN_VALUE) {
 }
@@ -133,11 +130,6 @@ void Options::set_option(const std::string &name, const std::string &value) {
     } else if (name == "search.nnueFile") {
         search.nnueFile = value;
     }
-#ifdef NUMA
-    else if (name == "search.set_processor_affinity") {
-        setOption<bool>(name, value, search.set_processor_affinity);
-    }
-#endif
     else if (name == "search.move_overhead") {
         setOption<int>(name, value, search.move_overhead);
     } else if (name == "search.minimum_search_time") {

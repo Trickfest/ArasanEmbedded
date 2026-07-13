@@ -5,11 +5,11 @@ building the chess program (arasanx), and also source for the
 following other console programs:
 
 - makebook - builds binary opening book files from text (PGN) files
-- makeeco - builds ecodata.cpp from from "eco" text file
 - ecococder - adds ECO codes to a PGN file
 - playchess - filters PGN games, removing those where end eval differs from result (and short games)
 - selfplay - generates positions for NNUE tuning
-- post_process_nn - converts quantised network file from bullet to Arasan format
+- sortpgn - utility to sort PGN files by date and round
+- blundercheck - utility to blunder-check PGN files
 
 Following is a sketch of the Arasan source directory tree:
 
@@ -33,9 +33,8 @@ NMAKE (Makefile.win) and one for GNU make (Makefile).
 
 Syzygy tablebase support is enabled by default.
 
-Syzygy support, NNUE support,and some of the Python scripts in the tools
-subdirectory rely on imported submodules. So if building Arasan from a
-git respository, issue the following command within your git directory
+The Arasan repository relies on several imported submodules. So if building
+Arasan from a git respository, issue the following command within your git directory
 to pull these dependencies into your your source tree:
 
 `git submodule update --init --recursive`
@@ -113,15 +112,9 @@ Program execution for PGO runs in the "profile" subdirectory, and
 -a is passed to the program, allowing options such as tablebase
 use to be set via an arasan.rc file in that directory, if desired.
 
-Defining NUMA in the Makefile will build a version that has support
-for NUMA (Non-Uniform Memory Access) machines. NUMA support relies
-on the hwloc library version 2.0 or higher. Note: you must have a
-compatible hwloc library in the library search path at runtime.
-
 The Arasan engine binary is named "arasanx-64," followed
 by the instruction set selected at build time (if specified), so for example:
-"arasanx-64-avx2-bmi2."  "-numa" is added for a NUMA
-build.
+"arasanx-64-avx2-bmi2."
 
 "make release" will build the release tarball and place it in the
 release subdirectory. This target uses a Python tool git-archive-all
@@ -180,16 +173,6 @@ while the debug objects and binaries are put into "\<target>\Debug".
 The default target is 64-bit Windows. For a 32-bit build, edit the
 Makefile to select TARGET=win32 and run the same build commands.
 
-## Windows XP compatibility
-
-To make a Windows XP-compatible build, edit the Makefile to set PLATFORM=XP.
-This requires installation and use of the build tools version 141_xp, including the
-Windows SDK version 7.1A. This is available as part of a Visual Studio 2017
-install, or by selecting the approprate build tools as part of a later
-Visual Studio install (but not Visual Studio 2026, which has dropped support).
-Note I no longer have a functioning XP machine, and so compatibility of current
-builds of Arasan is not tested.
-
 ## Building the engine with Visual Studio
 
 The Windows source distribution includes Visual Studio solution
@@ -205,11 +188,27 @@ subdirectory. (The command-line Makefile does not build the GUI). You
 will need a version of Visual Studio that includes
 the required MFC libraries. The Community Edition should work.
 By default the GUI solution file produces a Windows XP-compatible build,
-and so it requires the Windows SDK 7.1A to be installed. The Visual
-Studio installer can add this, but it is not installed by default.
+and so it requires the Windows SDK 7.1A to be installed (see the next
+section for further details).
 
 The Arasan GUI installer was built with InnoSetup: see the gui/install
 directory for further details.
+
+## Windows XP compatibility
+
+To make a Windows XP-compatible build, edit the Makefile to set PLATFORM=XP.
+This requires installation and use of the build tools version 141_xp, including the
+Windows SDK version 7.1A. This is available as part of a Visual Studio 2017
+install, or by selecting the approprate build tools as part of a later
+Visual Studio install (but not Visual Studio 2026, which has dropped support).
+
+Alternatively, build using the VS Studio project files, which enforce both the
+XP subsystem and toolchain.
+
+Note that I no longer have a functioning XP machine, and so compatibility of current
+builds of Arasan is not tested. This support is likely to be removed from Arasan in
+future, as Microsoft no longer supports Windows versions < 10, nor does it support
+the corresponding build tools.
 
 ## Cygwin/MSYS
 

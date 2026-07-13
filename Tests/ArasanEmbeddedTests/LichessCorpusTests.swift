@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+@testable import ArasanEmbedded
 
 @Suite("Lichess Corpus")
 struct LichessCorpusTests {
@@ -25,7 +26,26 @@ struct LichessCorpusTests {
             #expect(!puzzle.allowedMoves.isEmpty)
             #expect(puzzle.allowedMoves.contains(puzzle.expectedMove))
             #expect(puzzle.sourceURL.absoluteString.hasPrefix("https://lichess.org/"))
+            #expect(isValidArasanPosition(puzzle.sourceFEN))
+            #expect(isValidArasanPosition(puzzle.fen))
+            #expect(parseArasanBestmove("bestmove \(puzzle.firstMove)") != nil)
+            #expect(parseArasanBestmove("bestmove \(puzzle.expectedMove)") != nil)
+            #expect(puzzle.allowedMoves.allSatisfy {
+                parseArasanBestmove("bestmove \($0)") != nil
+            })
         }
+    }
+
+    @Test
+    func bestmoveParserAcceptsOnlyUCIPrincipalAndPonderForms() {
+        #expect(parseArasanBestmove("bestmove e2e4") == "e2e4")
+        #expect(parseArasanBestmove("bestmove e2e4 ponder e7e5") == "e2e4")
+        #expect(parseArasanBestmove("bestmove e2e4 garbage") == nil)
+        #expect(parseArasanBestmove("bestmove e2e4 ponder") == nil)
+        #expect(parseArasanBestmove("bestmove e2e4 ponder invalid") == nil)
+        #expect(parseArasanBestmove("bestmove e2e4 ponder 0000") == nil)
+        #expect(parseArasanBestmove("bestmove e2e4 ponder (none)") == nil)
+        #expect(parseArasanBestmove("bestmove (none) ponder e7e5") == nil)
     }
 }
 

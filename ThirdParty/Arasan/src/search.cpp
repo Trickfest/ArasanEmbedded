@@ -396,14 +396,6 @@ Move SearchController::findBestMove(
 #endif
     computerSide = board.sideToMove();
 
-#ifdef NUMA
-    if (pool->rebindMask.test(0)) {
-       // rebind main thread
-       pool->bind(0);
-       pool->rebindMask.reset(0);
-    }
-#endif
-
     stats->clear();
 
     // Positions are stored in the hashtable with an "age" to identify

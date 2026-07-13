@@ -10,10 +10,6 @@
 #include <fcntl.h>
 #endif
 
-#ifdef NUMA
-bitset<Constants::MaxCPUs> ThreadPool::rebindMask;
-#endif
-
 //#define _THREAD_TRACE
 
 #ifdef _THREAD_TRACE
@@ -45,14 +41,6 @@ void ThreadPool::idle_loop(ThreadInfo *ti) {
         {
             std::unique_lock<std::mutex> lock(pool->poolLock);
             ti->state = ThreadInfo::Idle;
-#ifdef NUMA
-            if (rebindMask.test(ti->index)) {
-                if (pool->bind(ti->index)) {
-                    cerr << "Warning: bind to CPU failed for thread " << ti->index << std::endl;
-                }
-                rebindMask.reset(ti->index);
-            }
-#endif
         }
         int result;
         if ((result = ti->wait()) != 0) {
@@ -211,19 +199,10 @@ ThreadPool::ThreadPool(SearchController *ctrl, unsigned n) :
    }
 #endif
    for (unsigned i = 0; i < n; i++) {
-#ifdef NUMA
-      rebindMask.set(i);
-#endif
       ThreadInfo *p = data[i] = new ThreadInfo(this,i);
       if (i==0) {
          p->work = new Search(controller,p);
          p->work->ti = p;
-#ifdef NUMA
-         // bind main thread
-         if (bind(0)) {
-             cerr << "Warning: bind to CPU failed for thread 0" << std::endl;
-         }
-#endif
       }
       else {
          // defer search creation until thread starts
@@ -288,9 +267,6 @@ void ThreadPool::shutDown() {
 void ThreadPool::resize(unsigned n) {
     if (n >= 1 && n < Constants::MaxCPUs && n != nThreads) {
         std::unique_lock<std::mutex> lock(poolLock);
-#ifdef NUMA
-        topo.recalc();
-#endif
         if (n>nThreads) {
             // growing
             while (n > nThreads) {

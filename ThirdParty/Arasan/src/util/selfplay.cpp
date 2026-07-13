@@ -111,8 +111,8 @@ static struct SelfPlayOptions {
     unsigned semiRandomizeInterval = 1;
     unsigned semiRandomPerGame = 14;
     unsigned multipv_limit = 8;
-    score_t multiPVMargin = static_cast<score_t>(0.45 * Scoring::PAWN_VALUE);
-    float whiteMarginAdjust = 0.91;
+    score_t multiPVMargin = static_cast<score_t>(0.42 * Scoring::PAWN_VALUE);
+    float whiteMarginAdjust = 0.95;
     bool skipNonQuiet = true;
     bool nonQuietSearchTest = false;
     score_t nonQuietSearchMargin = static_cast<score_t>(Scoring::PAWN_VALUE);
@@ -333,7 +333,7 @@ static void semiRandomMove(const Board &board, SelfPlayOptions::RandomizeType ty
         }
         for (size_t i = 0; i < stats.multipv_count; ++i) {
             const Statistics::MultiPVEntry &entry = stats.multi_pvs[i];
-            if (!IsNull(entry.best) && (maxScore - entry.display_value) <= sp_options.multiPVMargin) {
+            if (!IsNull(entry.best) && (maxScore - entry.display_value) <= margin) {
                 candidates[numCandidates++] = MoveResult(entry.best,entry.display_value);
             }
         }
@@ -820,10 +820,12 @@ int CDECL main(int argc, char **argv) {
 
     std::cout << "White wins: " << wins << " Black wins: " << losses << " Draws: " << draws
               << std::endl;
+    auto totalGames = draws + losses + wins;
+    auto winPct = 100.0 * wins / totalGames;
+    auto drawPct = 100.0 * draws / totalGames;
     std::cout << std::setprecision(4)
-              << "White score percentage: " << ((wins + draws/2) * 100.0) / (draws + losses + wins) << '%'
-              << " draw percentage: " << draws * 100.0 / (draws + losses + wins) << '%'
-              << std::endl;
+              << "White score percentage: " << winPct + drawPct/2 << '%'
+              << " draw percentage: " << drawPct << std::endl;
     uint64_t skipped = 0;
     for (unsigned i = 0; i < sp_options.cores; i++) {
         skipped += threadDatas[i].skipped;

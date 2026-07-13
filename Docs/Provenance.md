@@ -9,13 +9,13 @@ https://github.com/jdart1/arasan-chess
 Current vendored upstream commit:
 
 ```text
-c4bfcab0d5873cb5f61531426fad7a1b3abfe7f1
+c51273aa812c38bd54460adf68f2e15c32e74d71
 ```
 
 Commit message:
 
 ```text
-Makefile fix
+update submodule information
 ```
 
 ## Included Upstream Material
@@ -35,6 +35,25 @@ The package currently bundles this Arasan NNUE file as a SwiftPM resource:
 ThirdParty/Arasan/network/arasanv8-20260622.nnue
 ```
 
+Its checked-in identity is:
+
+```text
+Byte count: 25024576
+SHA-256: b42f9e13a37debb4af425d2ca74b5edff1d8034a616806bccdb67b79530201ac
+Format header: 41 52 41 08 (ARA plus version 8)
+```
+
+`Scripts/validate.sh` pins and verifies all three values before building so an
+accidental same-format resource replacement cannot silently invalidate this
+record.
+
+The materialized Fathom source comes from:
+
+```text
+https://github.com/jdart1/Fathom
+c9c6fef0dddc05d2e242c183acf5833149ab676d
+```
+
 ## Local Vendored Adjustments
 
 `ArasanEmbedded` carries wrapper-specific adjustments in the vendored source:
@@ -52,13 +71,30 @@ Arasan's mate-distance-pruning fix for issue #70 is now included upstream in
 Arasan commit `b2cbcae8`, so this package no longer carries a local hash-score
 clamp workaround for that debug assertion.
 
+No local adjustment is carried in `ThirdParty/Arasan/src/globals.cpp`. The
+package-owned embedded entry point instead calls
+`initArasanEmbeddedGlobals()`, which mirrors upstream
+`globals::initGlobals()` without its process-wide stack-limit mutation.
+`AEEngine` supplies the required 4 MiB pthread stack directly, preventing the
+upstream failure path from terminating a physical Apple host. The two
+initializers must be reconciled whenever the upstream snapshot changes.
+
+Package-owned bridge code converts Fathom's otherwise fatal allocation/mapping
+paths into C++ exceptions at the include boundary and catches them on the
+engine thread. That containment lives in
+`Sources/CArasanEmbedded/ArasanSyzygyProbe.cpp`; the materialized Fathom files
+are unchanged.
+
 ## Excluded Upstream Material
 
-This package intentionally does not vendor Arasan's GUI, GUI fonts, Visual
-Studio project files, upstream test corpus, development tools, opening-book
-source material, training logs, or NNUE training-source files. Those assets are
-not needed to build or use the embedded UCI wrapper and would make the Swift
-package larger and less focused.
+The retained core `src` tree includes `src/util`, including the upstream
+`makebook` source used to regenerate the package's tiny opening-book fixture.
+Those utility programs are not exposed as package products. The package
+intentionally does not vendor Arasan's GUI, GUI fonts, Visual Studio project
+files, external upstream test corpus, opening-book source material, training
+logs, or NNUE training-source files. Those assets are not needed to build or
+use the embedded UCI wrapper and would make the Swift package larger and less
+focused.
 
 Opening-book support remains available through caller-provided `book.bin`
 files; see `Docs/OpeningBooks.md`.
@@ -78,3 +114,7 @@ ThirdParty/Arasan/src/syzygy/LICENSE
 ```
 
 Do not remove either notice when updating vendored source.
+
+Source and binary distributors must also retain the package-owned MIT notice at
+the repository root. A binary-distribution notice bundle should therefore
+include all three license files.

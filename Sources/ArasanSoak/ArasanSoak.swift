@@ -1,12 +1,22 @@
 import ArasanEmbedded
+import Darwin
 import Foundation
 
 @main
 struct ArasanSoak {
-    static func main() async throws {
+    static func main() async {
         do {
             let options = try SoakOptions(arguments: Array(CommandLine.arguments.dropFirst()))
-            let positions = try loadPositions(from: options.positionFiles)
+            let positions: [ArasanSoakRunner.PositionSpec]
+            if options.positionFiles.isEmpty {
+                let bundledCorpus = Bundle.module.url(
+                    forResource: "lichess_puzzles",
+                    withExtension: "tsv"
+                )
+                positions = try loadPositions(from: [try bundledCorpus.requiredCorpusURL().path])
+            } else {
+                positions = try loadPositions(from: options.positionFiles)
+            }
             let runner = ArasanSoakRunner(configuration: options.configuration(positions: positions))
             let logOutput = options.logOutput
 
@@ -42,12 +52,17 @@ struct ArasanSoak {
             }
         } catch SoakError.help {
             print(usage)
+        } catch ExitCode.failure {
+            Darwin.exit(EXIT_FAILURE)
+        } catch {
+            fputs("error: \(error.localizedDescription)\n", stderr)
+            Darwin.exit(EXIT_FAILURE)
         }
     }
 }
 
 private struct SoakOptions {
-    var positionFiles: [String] = ["Resources/Soak/lichess_puzzles.tsv"]
+    var positionFiles: [String] = []
     var depth: Int?
     var nodes: Int?
     var movetime: Int?
@@ -68,17 +83,12 @@ private struct SoakOptions {
     var syzygyUses50MoveRule = true
 
     init(arguments: [String]) throws {
-        var explicitPositions = false
         var index = 0
         while index < arguments.count {
             let option = arguments[index]
             switch option {
             case "--positions":
                 let value = try Self.value(after: option, in: arguments, index: &index)
-                if !explicitPositions {
-                    positionFiles.removeAll()
-                    explicitPositions = true
-                }
                 positionFiles.append(value)
             case "--depth":
                 depth = try Self.integer(after: option, in: arguments, index: &index)
@@ -204,39 +214,76 @@ private func loadPositions(from path: String) throws -> [ArasanSoakRunner.Positi
         throw SoakError.positionsFileNotFound(path)
     }
 
-    let contents = try String(contentsOfFile: path, encoding: .utf8)
-    let lines = contents
-        .split(whereSeparator: \.isNewline)
-        .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-        .filter { !$0.isEmpty && !$0.hasPrefix("#") }
+    let maximumBytes = 10 * 1024 * 1024
+    let handle = try FileHandle(forReadingFrom: URL(fileURLWithPath: path))
+    defer { try? handle.close() }
+    let data = try handle.read(upToCount: maximumBytes + 1) ?? Data()
+    if data.count > maximumBytes {
+        throw SoakError.positionsFileTooLarge(path)
+    }
+    guard let contents = String(data: data, encoding: .utf8) else {
+        throw SoakError.invalidPositionsFile(path)
+    }
+
+    let normalizedNewlines = contents
+        .replacingOccurrences(of: "\r\n", with: "\n")
+        .replacingOccurrences(of: "\r", with: "\n")
+    let lines = normalizedNewlines
+        .split(separator: "\n", omittingEmptySubsequences: false)
+        .enumerated()
+        .compactMap { index, rawLine -> PositionFileLine? in
+            let text = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !text.isEmpty, !text.hasPrefix("#") else { return nil }
+            return PositionFileLine(number: index + 1, text: text)
+        }
 
     guard let firstLine = lines.first else {
         return []
     }
 
-    if firstLine.contains("\t") && firstLine.split(separator: "\t").contains("fen") {
+    if firstLine.text.contains("\t") || URL(fileURLWithPath: path).pathExtension.lowercased() == "tsv" {
         return try loadTSVPositions(from: lines, path: path)
     }
 
-    return lines.enumerated().map { index, line in
-        ArasanSoakRunner.PositionSpec(id: "\(URL(fileURLWithPath: path).lastPathComponent)#\(index + 1)", fen: line)
+    return try lines.map { line in
+        guard isPlausiblePosition(line.text) else {
+            throw SoakError.invalidPosition(path: path, line: line.number)
+        }
+        return ArasanSoakRunner.PositionSpec(
+            id: "\(URL(fileURLWithPath: path).lastPathComponent)#\(line.number)",
+            fen: line.text
+        )
     }
 }
 
-private func loadTSVPositions(from lines: [String], path: String) throws -> [ArasanSoakRunner.PositionSpec] {
-    let headers = lines[0].split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+private struct PositionFileLine {
+    let number: Int
+    let text: String
+}
+
+private func loadTSVPositions(
+    from lines: [PositionFileLine],
+    path: String
+) throws -> [ArasanSoakRunner.PositionSpec] {
+    let headers = lines[0].text.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
     guard let fenIndex = headers.firstIndex(of: "fen") else {
         throw SoakError.invalidPositionsFile(path)
     }
     let idIndex = headers.firstIndex(of: "id")
 
-    return lines.dropFirst().enumerated().map { rowIndex, line in
-        let fields = line.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+    return try lines.dropFirst().map { line in
+        let fields = line.text.split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+        guard fields.count == headers.count else {
+            throw SoakError.invalidPositionsRow(path: path, line: line.number)
+        }
         let id = idIndex.flatMap { $0 < fields.count ? fields[$0] : nil }
-            ?? "\(URL(fileURLWithPath: path).lastPathComponent)#\(rowIndex + 1)"
+            ?? "\(URL(fileURLWithPath: path).lastPathComponent)#\(line.number)"
         let fen = fenIndex < fields.count ? fields[fenIndex] : ""
+        guard isPlausiblePosition(fen) else {
+            throw SoakError.invalidPosition(path: path, line: line.number)
+        }
         return ArasanSoakRunner.PositionSpec(id: id, fen: fen)
-    }.filter { !$0.fen.isEmpty }
+    }
 }
 
 private func resolvePath(_ path: String) -> String {
@@ -250,15 +297,6 @@ private func resolvePath(_ path: String) -> String {
         .path
     if FileManager.default.fileExists(atPath: cwdPath) {
         return cwdPath
-    }
-
-    let repoRoot = URL(fileURLWithPath: #filePath)
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-        .deletingLastPathComponent()
-    let repoPath = repoRoot.appendingPathComponent(expandedPath).path
-    if FileManager.default.fileExists(atPath: repoPath) {
-        return repoPath
     }
 
     return cwdPath
@@ -290,7 +328,7 @@ Options:
   --handshake-timeout SECONDS Timeout waiting for uciok/readyok. Defaults to 10.
   --delay-ms MS               Delay between iterations.
   --ready-each                Send isready before each iteration.
-  --continue-on-timeout       Continue after a timeout instead of failing fast.
+  --continue-on-timeout       Continue only after stop yields that search's terminal bestmove.
   --log-output                Print all engine output lines.
   --nnue PATH                 Override the bundled NNUE file.
   --use-book                  Enable Arasan opening book with its default path.
@@ -308,7 +346,10 @@ private enum SoakError: Error, LocalizedError {
     case invalidSearchLimit
     case noPositions
     case positionsFileNotFound(String)
+    case positionsFileTooLarge(String)
     case invalidPositionsFile(String)
+    case invalidPositionsRow(path: String, line: Int)
+    case invalidPosition(path: String, line: Int)
 
     var errorDescription: String? {
         switch self {
@@ -326,12 +367,59 @@ private enum SoakError: Error, LocalizedError {
             "No positions were loaded."
         case .positionsFileNotFound(let path):
             "Positions file not found: \(path)"
+        case .positionsFileTooLarge(let path):
+            "Positions file exceeds the 10 MiB safety limit: \(path)"
         case .invalidPositionsFile(let path):
             "Invalid positions file: \(path)"
+        case .invalidPositionsRow(let path, let line):
+            "Invalid column count in positions file \(path) at line \(line)."
+        case .invalidPosition(let path, let line):
+            "Invalid startpos/FEN value in positions file \(path) at line \(line)."
         }
     }
 }
 
 private enum ExitCode: Error {
     case failure
+}
+
+private extension Optional where Wrapped == URL {
+    func requiredCorpusURL() throws -> URL {
+        guard let self else { throw SoakError.noPositions }
+        return self
+    }
+}
+
+private func isPlausiblePosition(_ value: String) -> Bool {
+    guard !value.contains("\0"), !value.contains("\r"), !value.contains("\n") else {
+        return false
+    }
+    if value == "startpos" { return true }
+    let fields = value.split(separator: " ").map(String.init)
+    guard fields.count == 4 || fields.count == 6 else { return false }
+    let ranks = fields[0].split(separator: "/", omittingEmptySubsequences: false)
+    guard ranks.count == 8 else { return false }
+    for rank in ranks {
+        var count = 0
+        for character in rank {
+            if let ascii = character.asciiValue, (49...56).contains(ascii) {
+                count += Int(ascii - 48)
+            } else {
+                guard "prnbqkPRNBQK".contains(character) else { return false }
+                count += 1
+            }
+        }
+        guard count == 8 else { return false }
+    }
+    guard fields[1] == "w" || fields[1] == "b" else { return false }
+    guard fields[2] == "-" || fields[2].allSatisfy({ "KQkq".contains($0) }) else { return false }
+    guard fields[3] == "-" || fields[3].range(
+        of: #"^[a-h][36]$"#,
+        options: .regularExpression
+    ) != nil else { return false }
+    if fields.count == 6 {
+        guard let halfmove = Int(fields[4]), halfmove >= 0,
+              let fullmove = Int(fields[5]), fullmove >= 1 else { return false }
+    }
+    return true
 }

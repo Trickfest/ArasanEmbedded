@@ -3,8 +3,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SYZYGY_DIR="${ARASAN_SYZYGY_FIXTURE_DIR:-$ROOT_DIR/.build/test-assets/syzygy}"
+[[ "$SYZYGY_DIR" = /* ]] || SYZYGY_DIR="$PWD/$SYZYGY_DIR"
 
-"$ROOT_DIR/Scripts/prepare-syzygy-fixtures.sh"
+ARASAN_SYZYGY_FIXTURE_DIR="$SYZYGY_DIR" \
+  "$ROOT_DIR/Scripts/prepare-syzygy-fixtures.sh"
 
 cd "$ROOT_DIR"
 

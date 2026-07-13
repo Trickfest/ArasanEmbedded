@@ -26,11 +26,6 @@ TESTS   = ../tests
 INSTALL = /usr/local/bin
 # location of the Syzygy tablebase source code (Fathom) (if used)
 STB=syzygy/src
-# compile in NUMA support
-#NUMA=1
-# location of HWLOC library (for NUMA support)
-HWLOC=/usr/local
-#
 # directory for utility programs
 UTIL = util
 
@@ -44,11 +39,6 @@ GIT_ARCHIVE_ALL_PATH ?= /home/jdart/bin/git-archive-all
 SYZYGY_TBS := 1
 
 FLAGS := -I .
-ifdef NUMA
-FLAGS := $(FLAGS) -DNUMA -I$(HWLOC)/include
-NUMA_OBJS=$(BUILD)/topo.o
-NUMA_PROFILE_OBJS=$(PROFILE)/topo.o
-endif
 ifdef SYZYGY_TBS
 FLAGS := $(FLAGS) -DSYZYGY_TBS
 endif
@@ -125,10 +115,6 @@ endif
 LBITS := $(shell getconf LONG_BIT)
 LIBS := -lc -lm
 
-ifdef NUMA
-LIBS := -lhwloc $(LIBS)
-endif
-
 ifdef EXE
 ARASANX := $(EXE)
 else
@@ -136,9 +122,6 @@ ifeq ($(LBITS),64)
    FLAGS := $(FLAGS) -D_64BIT
 endif
 ARASANX := arasanx-$(LBITS)
-ifdef NUMA
-ARASANX := $(ARASANX)-numa
-endif
 ifdef BUILD_TYPE
 ARASANX := $(ARASANX)-$(BUILD_TYPE)
 endif
@@ -274,10 +257,6 @@ LIBS := $(LIBS) -lrt
 LLVM_PROFDATA := $(LLVM_PROFDATA)
 endif
 
-ifdef NUMA
-LDFLAGS := $(LDFLAGS) -L$(HWLOC)/lib
-endif
-
 default: dirs $(EXPORT)/$(ARASANX)
 
 utils: dirs $(EXPORT)/playchess $(EXPORT)/makebook $(EXPORT)/ecocoder $(EXPORT)/selfplay $(EXPORT)/blundercheck $(EXPORT)/sortpgn
@@ -403,15 +382,15 @@ BLUNDERCHECK_SOURCES = blundercheck.cpp $(UTIL_SOURCES)
 
 SORTPGN_SOURCES = sortpgn.cpp $(UTIL_SOURCES)
 
-ARASANX_PROFILE_OBJS := $(patsubst %.cpp, $(PROFILE)/%.o, $(ARASANX_SOURCES)) $(ASM_PROFILE_OBJS) $(TB_PROFILE_OBJS) $(NUMA_PROFILE_OBJS)
-ARASANX_OBJS    := $(patsubst %.cpp, $(BUILD)/%.o, $(ARASANX_SOURCES)) $(TB_OBJS) $(NUMA_OBJS)
-MAKEBOOK_OBJS   := $(patsubst %.cpp, $(BUILD)/%.o, $(MAKEBOOK_SOURCES)) $(TB_OBJS) $(NUMA_OBJS)
-ECOCODER_OBJS   := $(patsubst %.cpp, $(BUILD)/%.o, $(ECOCODER_SOURCES)) $(TB_OBJS) $(NUMA_OBJS)
-PLAYCHESS_OBJS  := $(patsubst %.cpp, $(BUILD)/%.o, $(PLAYCHESS_SOURCES)) $(TB_OBJS) $(NUMA_OBJS)
-SELFPLAY_OBJS   := $(patsubst %.cpp, $(BUILD)/%.o, $(SELFPLAY_SOURCES)) $(TB_OBJS) $(NUMA_OBJS)
-BLUNDERCHECK_OBJS := $(patsubst %.cpp, $(BUILD)/%.o, $(BLUNDERCHECK_SOURCES)) $(TB_OBJS) $(NUMA_OBJS)
-SORTPGN_OBJS 	:= $(patsubst %.cpp, $(BUILD)/%.o, $(SORTPGN_SOURCES)) $(TB_OBJS) $(NUMA_OBJS)
-UNIT_OBJS       := $(patsubst %.cpp, $(BUILD)/%.o, $(UNIT_SOURCES)) $(TB_OBJS) $(NUMA_OBJS)
+ARASANX_PROFILE_OBJS := $(patsubst %.cpp, $(PROFILE)/%.o, $(ARASANX_SOURCES)) $(ASM_PROFILE_OBJS) $(TB_PROFILE_OBJS)
+ARASANX_OBJS    := $(patsubst %.cpp, $(BUILD)/%.o, $(ARASANX_SOURCES)) $(TB_OBJS)
+MAKEBOOK_OBJS   := $(patsubst %.cpp, $(BUILD)/%.o, $(MAKEBOOK_SOURCES)) $(TB_OBJS)
+ECOCODER_OBJS   := $(patsubst %.cpp, $(BUILD)/%.o, $(ECOCODER_SOURCES)) $(TB_OBJS)
+PLAYCHESS_OBJS  := $(patsubst %.cpp, $(BUILD)/%.o, $(PLAYCHESS_SOURCES)) $(TB_OBJS)
+SELFPLAY_OBJS   := $(patsubst %.cpp, $(BUILD)/%.o, $(SELFPLAY_SOURCES)) $(TB_OBJS)
+BLUNDERCHECK_OBJS := $(patsubst %.cpp, $(BUILD)/%.o, $(BLUNDERCHECK_SOURCES)) $(TB_OBJS)
+SORTPGN_OBJS 	:= $(patsubst %.cpp, $(BUILD)/%.o, $(SORTPGN_SOURCES)) $(TB_OBJS)
+UNIT_OBJS       := $(patsubst %.cpp, $(BUILD)/%.o, $(UNIT_SOURCES)) $(TB_OBJS)
 
 $(EXPORT)/makebook:  $(MAKEBOOK_OBJS)
 	cd $(BUILD) && $(LD) $(LDFLAGS) $(LTO) $(OPT) $(MAKEBOOK_OBJS) $(DEBUG) $(CXXFLAGS) -o $(EXPORT)/makebook -lstdc++ $(LIBS) $(SMPLIB)

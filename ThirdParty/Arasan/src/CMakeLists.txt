@@ -29,7 +29,6 @@ option(AVX2 "Use AVX2 instructions" OFF)
 option(AVX512 "Use AVX512 instructions" OFF)
 option(BMI2 "Use BMI2 instructions" OFF)
 option(NEON "Use ARM NEON instructions" OFF)
-option(NUMA "Build for non-uniform memory access (NUMA) system" OFF)
 
 set(EXE_NAME arasanx)
 
@@ -46,11 +45,6 @@ endif()
 if(MSVC)
     add_compile_definitions(NOMINMAX _CRT_SECURE_NO_WARNINGS)
 endif(MSVC)
-
-if(NUMA)
-    list(APPEND EXTRA_SRC topo.h topo.cpp)
-    add_compile_definitions(NUMA)
-endif(NUMA)
 
 if(SYZYGY_TBS)
     add_compile_definitions(SYZYGY_TBS)
@@ -138,10 +132,6 @@ elseif(MODERN)
 elseif (OLD)
     set(EXE_NAME ${EXE_NAME}-old)
 endif()
-
-if(NUMA)
-    set(EXE_NAME ${EXE_NAME}-numa)
-endif(NUMA)
 
 add_executable (${EXE_NAME} arasanx.cpp attacks.cpp attacks.h bench.h
 bench.cpp bhash.cpp bhash.h bitutil.h bitutil.cpp
