@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.0 - 2026-08-06
+
+### Changed
+
+- Refresh vendored Arasan source to upstream `master` commit
+  `95e90f5cc2507564f99eaef420795809c0ee4781` (`v26.0-4-g95e90f5c`), covering
+  the Arasan 26.0 release metadata and documentation plus four subsequent
+  `master` commits with search futility and history heuristic updates.
+- Preserve the embedded stream-input adjustment and the package-owned global
+  initializer; upstream's NNUE network, Fathom revision, initialization
+  sequence, cleanup sequence, and required thread-stack size are unchanged.
+- Compare public API compatibility against the previously released `v1.1.0`
+  package baseline.
+
 ## 1.1.0 - 2026-07-13
 
 ### Added

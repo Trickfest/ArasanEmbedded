@@ -476,8 +476,9 @@ static int testEval() {
         Case("r1bq1rk1/p2nbppp/1pp1pn2/3p4/2PP1B2/5NP1/PPQ1PPBP/RN3RK1 w - -",-1.0,1.0), // even opening
         Case("2q1r1k1/1r4b1/2p3p1/1pBpP1P1/p2P1P1Q/P3R2R/1P5K/8 b - -",
              -8.0,-4.0), // King attack
-        Case("3r4/P4k2/7p/8/2P1p1Bp/1PKn4/R5P1/8 b - -", // advanced passer
-             -12.0,-6.0),
+        Case("3r4/P4k2/7p/8/2P1p1Bp/1PKn4/R5P1/8 b - -",
+             -15.0,-8.0),  // advanced passer
+        Case("5B2/5p2/8/3b4/p7/P5KN/2nk4/8 b - -",0,3.0), // advanced passer, blocked
         // material imbalance
         Case("8/6pk/5pb1/7p/Q6P/2r1N3/5PP1/6K1 w - -",4.0,10.0),
         // material imbalance

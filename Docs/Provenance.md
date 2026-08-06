@@ -9,14 +9,17 @@ https://github.com/jdart1/arasan-chess
 Current vendored upstream commit:
 
 ```text
-c51273aa812c38bd54460adf68f2e15c32e74d71
+95e90f5cc2507564f99eaef420795809c0ee4781
 ```
 
 Commit message:
 
 ```text
-update submodule information
+rework history heuristic: 1. use separate bonus/malus terms 2. cap update magnitude instead of applying a depth limit for updates 3. SPSA tuning
 ```
+
+Upstream describes this snapshot as `v26.0-4-g95e90f5c`: the Arasan 26.0
+release plus four subsequent commits on `master`.
 
 ## Included Upstream Material
 

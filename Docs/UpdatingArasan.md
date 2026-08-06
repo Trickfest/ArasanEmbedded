@@ -8,9 +8,12 @@ Use this process when refreshing `ThirdParty/Arasan` from upstream `master`.
 git clone --recurse-submodules https://github.com/jdart1/arasan-chess.git /tmp/arasan-chess
 cd /tmp/arasan-chess
 git rev-parse HEAD
+git describe --tags --always
+git submodule status src/syzygy
 ```
 
-Record the commit SHA and commit message.
+Record the commit SHA, commit message, nearest upstream release description,
+and exact Fathom submodule revision in `Docs/Provenance.md`.
 
 ## 2. Re-vendor Source
 

@@ -1,3 +1,15 @@
+Changes in Arasan 26.0 (July 2026):
+ 1) Changes to book move selection logic
+ 2) Make more parameters tunable, and tune piece values and futilty parameters
+ 3) GUI: fix promotion by user
+ 4) Fixes for compatibility with latest bullet
+ 5) Introduce 3-layer "version 8" quantized integer network, with runtime optimizations
+ 6) Fixes/speedups in selfplay utility
+ 7) Add some additional utility programs
+ 8) Remove NUMA support
+ 9) GUI: replace TrueType fonts with SVG pieces
+ 10) Fix to mate distance pruning
+ 
 Changes in Arasan 25.4 (April 2026):
  1) Changes to hash table usage in qsearch
  2) Singular extension changes

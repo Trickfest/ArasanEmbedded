@@ -15,13 +15,15 @@ pushd ..
 7z u -tzip -orelease %1 tools\playchess.py tools\stats\README.md tools\stats\*.py
 7z u -tzip -orelease %1 gui\*.h gui\*.cpp gui\gui.rc gui\res\*.*
 7z u -tzip -orelease %1 gui\gui.sln gui\gui.vcxproj gui\arasan.props
-7z u -tzip -orelease %1 gui\fonts\*.zip
+7z u -tzip -orelease -r %1 gui\chess-openings
+7z u -tzip -orelease -r %1 gui\lunasvg
 7z u -tzip -orelease %1 prj\prj.sln prj\prj.vcxproj
 7z u -tzip -orelease %1 book\basic.pgn
+7z u -tzip -orelease %1 book\book.bin
 7z u -tzip -orelease %1 doc\programr.html doc\style_pg.css
 7z u -tzip -orelease %1 doc\TODO doc\CHANGES doc\BUILD.md
 7z u -tzip -orelease %1 tests\bt2630.epd tests\ecmgcp.epd
-7z u -tzip -orelease %1 tests\arasan2024.epd tests\pet.epd tests\prof
+7z u -tzip -orelease %1 tests\arasan2026.epd tests\pet.epd tests\prof
 7z u -tzip -orelease %1 tests\eet.epd
 7z u -tzip -orelease %1 tests\wacnew.epd tests\lapuce2.epd
 7z u -tzip -orelease %1 tests\lapuce2.doc tests\iq4.epd tests\prof.epd
