@@ -73,7 +73,9 @@ std::mutex outputLock, bookLock;
 
 static std::ofstream *game_out_file = nullptr, *pos_out_file = nullptr;
 
-static std::atomic<unsigned> posCounter(0), wins(0), losses(0), draws(0);
+static std::atomic<uint64_t> posCounter(0);
+
+static std::atomic<unsigned> wins(0), losses(0), draws(0);
 
 static constexpr int MAX_MULTIPV = 10;
 
@@ -83,33 +85,31 @@ static struct SelfPlayOptions {
     unsigned minOutPly = 16;
     unsigned maxOutPly = 300;
     unsigned cores = 1;
-    unsigned posCount = 10000000;
+    uint64_t posCount = 10000000;
     unsigned depthLimit = 9;
     unsigned semiRandomDepthLimit = 0; // 0 = use max(1, depthLimit - 2)
     bool adjudicateDraw = true;
     bool adjudicateTB = true;
     int adjudicateTBMen = 3;
     int adjudicateTBMenPawnless = 5;
-    score_t adjudicateWinScore = 20*Scoring::PAWN_VALUE;
+    score_t adjudicateWinScore = 5*Scoring::PAWN_VALUE;
     unsigned adjudicateWinPlies = 3;
     unsigned outputPlyFrequency = 1; // output every nth move
     unsigned drawAdjudicationPlies = 10;
     unsigned TBAdjudicationPlies = 4;
-    unsigned drawAdjudicationMinPly = 150;
+    unsigned drawAdjudicationMinPly = 80;
     int adjudicateMinMove50Count = 40; // mininum move 50 count
     std::string posFileName;
     std::string gameFileName = "games.pgn";
     bool saveGames = false;
     unsigned maxBookPly = 0;
     bool randomize = true;
-    unsigned randomizeRange = 2;
-    unsigned randomizeInterval = 1;
+    unsigned randomCount = 2; // contiguous random plies per game
     int randomTolerance = 0.5*Scoring::PAWN_VALUE;
     bool limitEarlyKingMoves = true;
     bool semiRandomize = true;
     RandomizeType randomizeType = RandomizeType::MultiPV;
-    unsigned semiRandomizeInterval = 1;
-    unsigned semiRandomPerGame = 14;
+    unsigned semiRandomCount = 14; // contiguous semi-random plies per game
     unsigned multipv_limit = 8;
     score_t multiPVMargin = static_cast<score_t>(0.42 * Scoring::PAWN_VALUE);
     float whiteMarginAdjust = 0.95;
@@ -344,8 +344,17 @@ static void semiRandomMove(const Board &board, SelfPlayOptions::RandomizeType ty
 static void selfplay(ThreadData &td) {
     SearchController *searcher = td.searcher;
     std::uniform_int_distribution<unsigned> dist(1, sp_options.outputPlyFrequency);
-    std::uniform_int_distribution<unsigned> rand_dist(1, sp_options.randomizeInterval);
     auto startTime = getCurrentTime();
+    auto reportProgress = [&startTime](uint64_t count) {
+        auto elapsedTime = getElapsedTime(startTime, getCurrentTime()) / 1000;
+        std::ios_base::fmtflags original_flags = std::cout.flags();
+        std::cout << std::setprecision(2) << count << " positions ("
+                  << (count * 100.0) / sp_options.posCount << "% done),"
+                  << " elapsed time: " << elapsedTime
+                  << " sec., positions/second: " << count / elapsedTime << std::flush
+                  << std::endl;
+        std::cout.flags(original_flags);
+    };
     while (posCounter < sp_options.posCount) {
         if (sp_options.saveGames) {
             td.gameMoves.reset();
@@ -356,17 +365,10 @@ static void selfplay(ThreadData &td) {
         unsigned low_score_count = 0, tb_score_count = 0, high_score_count = 0;
         enum class Result { WhiteWin, BlackWin, Draw, Unknown } result = Result::Unknown;
         std::vector<BinFormats::PositionData> output;
+        BinFormats::ViriGame viriGame;
         uint64_t prevNodes = 0ULL;
         int prevScore = 0;
         unsigned prevDepth = 0;
-        // Semi-randomization is scheduled independently per color. Otherwise,
-        // with a small semiRandomizeInterval the fixed ply spacing between
-        // semi-random moves locks onto a single color (determined by the
-        // parity of bookMoves), so all the deliberate weakenings hit one
-        // side and skew the White/Black result. Index 0 = White, 1 = Black.
-        unsigned noSemiRandom[2] = {0, 0}, semiRandomCount[2] = {0, 0};
-        const unsigned semiRandomBudget[2] = {(sp_options.semiRandomPerGame + 1) / 2,
-                                              sp_options.semiRandomPerGame / 2};
         unsigned bookMoves = sp_options.maxBookPly;
         for (unsigned ply = 0; ply <= sp_options.maxOutPly && !adjudicated && !terminated; ++ply) {
             stats.clear();
@@ -378,28 +380,31 @@ static void selfplay(ThreadData &td) {
                     bookMoves = ply;
                 }
             }
+            // Randomization is confined to contiguous windows - random plies,
+            // then semi-random - that end before recording starts. Those plies
+            // are not training material and a whole-game format cannot omit
+            // individual plies. Alternating plies keep the color split even.
+            const unsigned semiRandomStart = bookMoves + sp_options.randomCount;
+            const unsigned semiRandomEnd = semiRandomStart + sp_options.semiRandomCount;
+            const unsigned recordStart = semiRandomEnd;
             score_t score = 0;
             if (IsNull(m)) {
                 // Don't randomize if in TB range or if score very large
                 bool skipRandom = (int(board.men()) <= globals::EGTBMenCount) ||
                                   (std::abs(prevScore) >= 10 * Scoring::PAWN_VALUE);
-                if (sp_options.randomize &&
-                    (ply >= bookMoves) &&
-                    (ply < bookMoves + sp_options.randomizeRange) &&
-                    rand_dist(td.engine) == sp_options.randomizeInterval) {
+                if (sp_options.randomize && (ply >= bookMoves) &&
+                    (ply < bookMoves + sp_options.randomCount)) {
                     m = randomMove(board, stats, td);
                     // TBD: we don't associate any prior FENS with the current
                     // game result after a random move. Stockfish though does do
                     // this.
                     output.clear();
+                    viriGame.reset();
                     // We have no score from a random move, so reset the
                     // adjudication counter
                     low_score_count = 0;
-                } else if (int ci = (board.sideToMove() == White) ? 0 : 1;
-                           sp_options.semiRandomize && !skipRandom &&
-                           (ply > bookMoves + sp_options.randomizeRange) &&
-                           (semiRandomCount[ci] == 0 || noSemiRandom[ci] >= sp_options.semiRandomizeInterval) &&
-                           (semiRandomCount[ci] < semiRandomBudget[ci]) &&
+                } else if (sp_options.semiRandomize && !skipRandom &&
+                           (ply >= semiRandomStart) && (ply < semiRandomEnd) &&
                            (int(board.men()) > globals::EGTBMenCount) &&
                            ((sp_options.randomizeType != SelfPlayOptions::RandomizeType::Nodes) ||
                             (prevNodes && prevDepth >= sp_options.depthLimit))) {
@@ -416,11 +421,6 @@ static void selfplay(ThreadData &td) {
                         ++low_score_count;
                     else
                         low_score_count = 0;
-                    if (sp_options.randomizeType == SelfPlayOptions::RandomizeType::Nodes ||
-                        candCount > 1) {
-                        noSemiRandom[ci] = 0;
-                        ++semiRandomCount[ci];
-                    }
                 } else {
                     m = searcher->findBestMove(board, FixedDepth, Constants::INFINITE_TIME,
                                                0, // extra time
@@ -435,7 +435,6 @@ static void selfplay(ThreadData &td) {
                         ++low_score_count;
                     else
                         low_score_count = 0;
-                    ++noSemiRandom[ci];
                     if (score >= sp_options.adjudicateWinScore)
                         ++high_score_count;
                     else
@@ -492,8 +491,18 @@ static void selfplay(ThreadData &td) {
                 if (sp_options.saveGames) {
                     Notation::image(board, m, Notation::OutputFormat::SAN, image);
                 }
-                if (ply >= sp_options.minOutPly &&
-                    (ply > sp_options.maxBookPly + sp_options.randomizeRange) &&
+                if (sp_options.format == BinFormats::Format::Viri) {
+                    // Viriformat stores whole games, so every ply is recorded,
+                    // quiet or not: the trainer does the filtering. minOutPly
+                    // is likewise applied at training time, via the min_ply
+                    // setting of the trainer's filter.
+                    if (!viriGame.started() && ply >= recordStart) {
+                        viriGame.restart(board, ply);
+                    }
+                    if (viriGame.started()) {
+                        viriGame.addMove(board, m, score);
+                    }
+                } else if (ply >= sp_options.minOutPly && ply >= recordStart &&
                     !board.repCount(1) &&
                     (!sp_options.checkHash ||
                      !sp_hash_table.check_and_replace_hash(board.hashCode()))) {
@@ -545,25 +554,38 @@ static void selfplay(ThreadData &td) {
         if (sp_options.saveGames) {
             saveGame(td, resultStrs[i], *game_out_file);
         }
+        int resultVal = 0; // result from White POV
+        if (result == Result::WhiteWin) {
+            resultVal = 1;
+        }
+        else if (result == Result::BlackWin) {
+            resultVal = -1;
+        }
+        if (sp_options.format == BinFormats::Format::Viri) {
+            const unsigned plies = static_cast<unsigned>(viriGame.plies());
+            // a game record must be contiguous in the file, so take the lock
+            // once and write the whole game
+            {
+                std::unique_lock<std::mutex> lock(outputLock);
+                if (!viriGame.write(resultVal, *pos_out_file)) {
+                    std::cerr << "write error" << std::endl;
+                    break;
+                }
+            }
+            // Note this counts recorded plies, not the positions that will
+            // remain after the trainer has filtered them.
+            const uint64_t prev = posCounter.fetch_add(plies);
+            const uint64_t interval = sp_options.verboseReportingInterval;
+            if ((prev + plies) / interval != prev / interval) {
+                reportProgress(prev + plies);
+            }
+            continue;
+        }
         for (const BinFormats::PositionData &data : output) {
             if (posCounter++ >= sp_options.posCount)
                 break;
             if (posCounter % sp_options.verboseReportingInterval == 0) {
-                auto elapsedTime = getElapsedTime(startTime, getCurrentTime()) / 1000;
-                std::ios_base::fmtflags original_flags = std::cout.flags();
-                std::cout << std::setprecision(2) << posCounter << " positions ("
-                          << (posCounter * 100.0) / sp_options.posCount << "% done),"
-                          << " elapsed time: " << elapsedTime
-                          << " sec., positions/second: " << posCounter / elapsedTime << std::flush
-                          << std::endl;
-                std::cout.flags(original_flags);
-            }
-            int resultVal = 0; // result from White POV
-            if (result == Result::WhiteWin) {
-                resultVal = 1;
-            }
-            else if (result == Result::BlackWin) {
-                resultVal = -1;
+                reportProgress(posCounter);
             }
             std::unique_lock<std::mutex> lock(outputLock);
             bool writeResult = false;
@@ -609,9 +631,20 @@ static void threadp(ThreadData *td) {
 
 static void usage() {
     std::cerr << "Usage:" << std::endl;
-    std::cerr << "selfplay [-a (append)] [-d depth] [-s semi-random depth] [-v (verbose)]" << std::endl;
-    std::cerr << "         [-c cores] [-n positions] [-m output every m positions]" << std::endl;
-    std::cerr << "         [-f output format] [-g filename (save games)]" << std::endl;
+    std::cerr << "selfplay [-a (append)]" << std::endl;
+    std::cerr << "         [-b book plies]" << std::endl;
+    std::cerr << "         [-c cores]" << std::endl;
+    std::cerr << "         [-d depth]" << std::endl;;
+    std::cerr << "         [-f output format (bin|marlin|bullet|text|viri)]" << std::endl;
+    std::cerr << "         [-g filename (save games)]" << std::endl;
+    std::cerr << "         [-h (use hashtable to check dups)]" << std::endl;
+    std::cerr << "         [-n positions]" << std::endl;
+    std::cerr << "         [-m output every m positions]" << std::endl;
+    std::cerr << "         [-o filename (output file)]" << std::endl;
+    std::cerr << "         [-r n (semi-random moves per game)]" << std::endl;
+    std::cerr << "         [-R n (random moves per game)]" << std::endl;
+    std::cerr << "         [-s semi-random depth]" << std::endl;
+    std::cerr << "         [-v (verbose)]" << std::endl;
 }
 
 static void init_threads() {
@@ -702,19 +735,21 @@ int CDECL main(int argc, char **argv) {
                 return -1;
             }
         } else if (strcmp(argv[arg], "-r") == 0) {
-            std::stringstream s1(argv[++arg]);
-            s1 >> sp_options.semiRandomizeInterval;
-            if (s1.bad()) {
-                std::cerr << "error parsing parameters after -r" << std::endl;
+            std::stringstream s(argv[++arg]);
+            s >> sp_options.semiRandomCount;
+            if (s.bad()) {
+                std::cerr << "error in move count after -r" << std::endl;
                 return -1;
             }
-            std::stringstream s2(argv[++arg]);
-            s2 >> sp_options.semiRandomPerGame;
-            if (s2.bad()) {
-                std::cerr << "error parsing parameters after -r" << std::endl;
+            sp_options.semiRandomize = sp_options.semiRandomCount > 0;
+        } else if (strcmp(argv[arg], "-R") == 0) {
+            std::stringstream s(argv[++arg]);
+            s >> sp_options.randomCount;
+            if (s.bad()) {
+                std::cerr << "error in move count after -R" << std::endl;
                 return -1;
             }
-            sp_options.semiRandomize = sp_options.semiRandomPerGame > 0;
+            sp_options.randomize = sp_options.randomCount > 0;
         } else if (strcmp(argv[arg], "-c") == 0) {
             std::stringstream s(argv[++arg]);
             s >> sp_options.cores;
@@ -789,6 +824,22 @@ int CDECL main(int argc, char **argv) {
         }
     }
 
+    if (sp_options.format == BinFormats::Format::Viri) {
+        // Viriformat stores whole games as a move sequence, so positions
+        // cannot be omitted from the output.
+        if (sp_options.checkHash || sp_options.outputPlyFrequency != 1 ||
+            sp_options.nonQuietSearchTest) {
+            std::cerr << "error: -h, -m and the non-quiet search test cannot be "
+                      << "used with the viri format: positions cannot be omitted "
+                      << "from a game record." << std::endl;
+            return -1;
+        }
+        if (sp_options.skipNonQuiet) {
+            std::cout << "note: position skipping omitted, viri format records all plies"
+                      << std::endl;
+        }
+    }
+
     if (sp_options.posFileName == "") {
         sp_options.posFileName = (sp_options.format == BinFormats::Format::StockfishBin)
                                      ? "positions.bin"
@@ -826,11 +877,15 @@ int CDECL main(int argc, char **argv) {
     std::cout << std::setprecision(4)
               << "White score percentage: " << winPct + drawPct/2 << '%'
               << " draw percentage: " << drawPct << std::endl;
-    uint64_t skipped = 0;
-    for (unsigned i = 0; i < sp_options.cores; i++) {
-        skipped += threadDatas[i].skipped;
+    if (sp_options.format != BinFormats::Format::Viri) {
+        // Viriformat does no position skipping: trainer is in charge of that
+        uint64_t skipped = 0;
+        for (unsigned i = 0; i < sp_options.cores; i++) {
+            skipped += threadDatas[i].skipped;
+        }
+        std::cout << skipped << " non-quiet positions skipped ("
+                  << (100.0 * skipped) / (skipped + sp_options.posCount) << "%)" << std::endl;
     }
-    std::cout << skipped << " non-quiet positions skipped" << std::endl;
     delete pos_out_file;
     delete game_out_file;
 

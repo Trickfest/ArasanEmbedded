@@ -3,10 +3,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SIMULATOR_NAME="${ARASAN_IOS_SIMULATOR_NAME:-iPhone 17 Pro}"
-API_BASELINE="${ARASAN_API_BASELINE_TAG:-v1.1.0}"
-NNUE_PATH="ThirdParty/Arasan/network/arasanv8-20260622.nnue"
+API_BASELINE="${ARASAN_API_BASELINE_TAG:-v1.2.0}"
+NNUE_PATH="ThirdParty/Arasan/network/arasanv8-20260906.nnue"
 NNUE_BYTES=25024576
-NNUE_SHA256="b42f9e13a37debb4af425d2ca74b5edff1d8034a616806bccdb67b79530201ac"
+NNUE_SHA256="b6d294733da12b99bd0f6c760dce2a3744f3344d94f9956ead36eb5c281b4831"
 
 cd "$ROOT_DIR"
 

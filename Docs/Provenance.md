@@ -9,17 +9,17 @@ https://github.com/jdart1/arasan-chess
 Current vendored upstream commit:
 
 ```text
-95e90f5cc2507564f99eaef420795809c0ee4781
+d507b7cc583c1f0a4d02a794384b6fce2947e1a1
 ```
 
 Commit message:
 
 ```text
-rework history heuristic: 1. use separate bonus/malus terms 2. cap update magnitude instead of applying a depth limit for updates 3. SPSA tuning
+Fix clamping/limiting code for LMR. Fixes #71.
 ```
 
-Upstream describes this snapshot as `v26.0-4-g95e90f5c`: the Arasan 26.0
-release plus four subsequent commits on `master`.
+Upstream describes this snapshot as `v26.0-18-gd507b7cc`: the Arasan 26.0
+release plus eighteen subsequent commits on `master`.
 
 ## Included Upstream Material
 
@@ -35,14 +35,14 @@ The vendored copy under `ThirdParty/Arasan` includes:
 The package currently bundles this Arasan NNUE file as a SwiftPM resource:
 
 ```text
-ThirdParty/Arasan/network/arasanv8-20260622.nnue
+ThirdParty/Arasan/network/arasanv8-20260906.nnue
 ```
 
 Its checked-in identity is:
 
 ```text
 Byte count: 25024576
-SHA-256: b42f9e13a37debb4af425d2ca74b5edff1d8034a616806bccdb67b79530201ac
+SHA-256: b6d294733da12b99bd0f6c760dce2a3744f3344d94f9956ead36eb5c281b4831
 Format header: 41 52 41 08 (ARA plus version 8)
 ```
 
@@ -73,6 +73,10 @@ fix as a local vendored adjustment.
 Arasan's mate-distance-pruning fix for issue #70 is now included upstream in
 Arasan commit `b2cbcae8`, so this package no longer carries a local hash-score
 clamp workaround for that debug assertion.
+
+Arasan's late-move-reduction clamp fix for issue #71 is included upstream in
+commit `d507b7cc`. The package carries that corrected search code directly and
+does not maintain a duplicate local patch.
 
 No local adjustment is carried in `ThirdParty/Arasan/src/globals.cpp`. The
 package-owned embedded entry point instead calls

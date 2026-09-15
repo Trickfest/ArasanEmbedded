@@ -132,7 +132,7 @@ public extension ArasanEngine {
     /// The bundled Arasan NNUE network URL.
     static var defaultNNUEURL: URL {
         guard let url = Bundle.module.url(
-            forResource: "arasanv8-20260622",
+            forResource: "arasanv8-20260906",
             withExtension: "nnue"
         ) else {
             preconditionFailure("Bundled Arasan NNUE resource is missing.")

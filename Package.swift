@@ -82,8 +82,13 @@ let package = Package(
                 .define("SIMD"),
                 .define("NEON"),
                 .define("ARASAN_EMBEDDED_STREAM_INPUT"),
-                .define("ARASAN_VERSION", to: "embedded-master-95e90f5c"),
-                .define("NETWORK", to: "arasanv8-20260622.nnue"),
+                .define("ARASAN_VERSION", to: "embedded-master-d507b7cc"),
+                .define("NETWORK", to: "arasanv8-20260906.nnue"),
+                .define(
+                    "_LIBCPP_HARDENING_MODE",
+                    to: "_LIBCPP_HARDENING_MODE_DEBUG",
+                    .when(configuration: .debug)
+                ),
                 .define("NDEBUG", .when(configuration: .release)),
             ],
             linkerSettings: [
@@ -94,7 +99,7 @@ let package = Package(
             name: "ArasanEmbedded",
             dependencies: ["CArasanEmbedded"],
             resources: [
-                .copy("../../ThirdParty/Arasan/network/arasanv8-20260622.nnue"),
+                .copy("../../ThirdParty/Arasan/network/arasanv8-20260906.nnue"),
             ]
         ),
         .executableTarget(

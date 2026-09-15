@@ -28,6 +28,26 @@ struct ArasanEngineIntegrationTests {
     }
 
     @Test
+    func lateMoveReductionClampHandlesStartPositionAtDepthEight() async throws {
+        let (engine, stream) = try await startEngine()
+        defer { engine.stop() }
+
+        let startIndex = stream.lineCount
+        engine.sendCommand("position startpos")
+        engine.sendCommand("go depth 8")
+
+        let bestMove = try await stream.waitForLine(
+            prefix: "bestmove",
+            after: startIndex,
+            timeout: .seconds(30)
+        )
+        let searchLines = stream.allLines().dropFirst(startIndex)
+
+        #expect(searchLines.contains { $0.hasPrefix("info ") && $0.contains(" depth 8 ") })
+        #expect(Self.bestmoveToken(from: bestMove) != nil)
+    }
+
+    @Test
     func processWideSingleEnginePolicyAllowsRejectedInstanceToRetry() async throws {
         let first = ArasanEngine { _ in }
         let secondStream = EngineLineStream()
@@ -823,7 +843,7 @@ struct ArasanEngineIntegrationTests {
 
             let startIndex = stream.lineCount
             engine.sendCommand("position fen \(puzzle.fen)")
-            engine.sendCommand("go depth 4")
+            engine.sendCommand("go depth 8")
 
             let line = try await stream.waitForLine(prefix: "bestmove", after: startIndex, timeout: .seconds(20))
             let bestmove = try #require(Self.bestmoveToken(from: line))

@@ -18,7 +18,7 @@ The script validates the manifest; performs Debug and Release builds; confirms
 Release binaries do not import native assertions; runs the normal and Thread
 Sanitizer suites; exercises both CLIs, a child-process startup with a constrained
 stack limit, and invalid-input paths; builds for an iOS simulator and a generic
-iOS device; checks the public API against the configured `v1.1.0` baseline; and
+iOS device; checks the public API against the configured `v1.2.0` baseline; and
 verifies all three required worktree
 license files. On a clean checkout it also checks those licenses inside the
 committed SwiftPM source archive. `swift package archive-source` archives Git
@@ -75,6 +75,8 @@ The package tests live in `Tests/ArasanEmbeddedTests`.
 
 - UCI startup reaches `uciok` and `readyok`
 - a short real search returns `bestmove`
+- the issue #71 late-move-reduction path completes a hardened start-position
+  search through depth 8
 - the process-wide single-engine policy is enforced
 - startup emits identity, option, `uciok`, and `readyok` lines
 - repeated `isready` probes return `readyok`
@@ -103,7 +105,7 @@ The package tests live in `Tests/ArasanEmbeddedTests`.
   run rejection, preserves timeout-boundary results, emits terminal events in
   order, and cannot attribute a stale `bestmove` to a later search
 - a tiny generated `book.bin` fixture supplies a real opening-book best move
-- every normalized position returns an allowed move at depth 4
+- every normalized position returns an allowed move at depth 8
 - optional downloaded Syzygy fixtures produce real `tbhits` output
 
 The engine integration suite is marked `.serialized` because Arasan is exposed

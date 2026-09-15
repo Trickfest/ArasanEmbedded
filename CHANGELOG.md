@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.3.0 - 2026-09-15
+
+### Changed
+
+- Refresh vendored Arasan source to upstream `master` commit
+  `d507b7cc583c1f0a4d02a794384b6fce2947e1a1` (`v26.0-18-gd507b7cc`), including
+  its history-pruning and late-move-reduction updates.
+- Update the bundled network to `arasanv8-20260906.nnue` and retain the current
+  Fathom revision, embedded stream-input adjustment, package-owned global
+  initializer, and 4 MiB engine-thread stack.
+- Enable libc++ debug hardening for the native target, add a depth-8 regression
+  search for the reported failure, and compare public API compatibility against
+  the previously released `v1.2.0` package baseline.
+
+### Fixed
+
+- Include Arasan's upstream issue #71 fix, which clamps the requested
+  late-move reduction against a guaranteed nonnegative maximum and prevents
+  invalid bounds from reaching `std::clamp`.
+
 ## 1.2.0 - 2026-08-06
 
 ### Changed

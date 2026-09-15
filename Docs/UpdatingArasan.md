@@ -107,6 +107,10 @@ Likewise, the mate-distance-pruning fix for Arasan issue #70 was accepted
 upstream in Arasan commit `b2cbcae8`, so the older local `hash.h` clamp
 workaround should not be reintroduced.
 
+The late-move-reduction clamp fix for Arasan issue #71 was accepted upstream in
+Arasan commit `d507b7cc`, so it should also remain an unmodified upstream fix
+rather than a package-local patch.
+
 ## 6. Validate
 
 Confirm that the explicit native source list in `Package.swift` still matches

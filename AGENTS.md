@@ -67,7 +67,7 @@ Arasan is vendored from `https://github.com/jdart1/arasan-chess`.
 The current vendored upstream commit is:
 
 ```text
-95e90f5cc2507564f99eaef420795809c0ee4781
+d507b7cc583c1f0a4d02a794384b6fce2947e1a1
 ```
 
 The Fathom Syzygy probing submodule is materialized as normal files under
@@ -78,8 +78,8 @@ upstream revision is:
 c9c6fef0dddc05d2e242c183acf5833149ab676d
 ```
 
-The bundled network is `arasanv8-20260622.nnue`, 25,024,576 bytes, with SHA-256
-`b42f9e13a37debb4af425d2ca74b5edff1d8034a616806bccdb67b79530201ac`.
+The bundled network is `arasanv8-20260906.nnue`, 25,024,576 bytes, with SHA-256
+`b6d294733da12b99bd0f6c760dce2a3744f3344d94f9956ead36eb5c281b4831`.
 
 When updating Arasan:
 
