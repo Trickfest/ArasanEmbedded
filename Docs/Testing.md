@@ -18,7 +18,7 @@ The script validates the manifest; performs Debug and Release builds; confirms
 Release binaries do not import native assertions; runs the normal and Thread
 Sanitizer suites; exercises both CLIs, a child-process startup with a constrained
 stack limit, and invalid-input paths; builds for an iOS simulator and a generic
-iOS device; checks the public API against the configured `v1.2.0` baseline; and
+iOS device; checks the public API against the configured `v1.3.0` baseline; and
 verifies all three required worktree
 license files. On a clean checkout it also checks those licenses inside the
 committed SwiftPM source archive. `swift package archive-source` archives Git
@@ -77,6 +77,9 @@ The package tests live in `Tests/ArasanEmbeddedTests`.
 - a short real search returns `bestmove`
 - the issue #71 late-move-reduction path completes a hardened start-position
   search through depth 8
+- inconsistent castling rights from issue #72 are rejected, and the same
+  ten-position bare-FEN sequence with valid castling rights completes repeated
+  depth-8 searches without reading outside correction-history storage
 - the process-wide single-engine policy is enforced
 - startup emits identity, option, `uciok`, and `readyok` lines
 - repeated `isready` probes return `readyok`

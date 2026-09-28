@@ -48,6 +48,80 @@ struct ArasanEngineIntegrationTests {
     }
 
     @Test
+    func repeatedBareFENSearchesKeepCorrectionHistoryInBounds() async throws {
+        let (engine, stream) = try await startEngine()
+        defer { engine.stop() }
+
+        // The final two FENs in upstream issue #72 claimed black queenside
+        // castling rights after the a8 rook was gone. Preserve the reported
+        // position sequence while using castling rights consistent with the
+        // board so every position is valid and searchable.
+        let positions = [
+            "r1b1kb1r/3n1ppp/p1q1pn2/1pp5/P2P4/2P1NN2/1P2BPPP/R1BQK2R b KQkq a3 0 1",
+            "r3kb1r/1b1n1ppp/p1q1pn2/1pp5/P2P4/2P1NN2/1P2BPPP/R1BQK2R w KQkq - 0 1",
+            "r3kb1r/1b1n1ppp/p1q1pn2/1pp5/P2P4/2P1NN2/1P2BPPP/R1BQ1RK1 b kq - 0 1",
+            "r3k2r/1b1nbppp/p1q1pn2/1pp5/P2P4/2P1NN2/1P2BPPP/R1BQ1RK1 w kq - 0 1",
+            "r3k2r/1b1nbppp/p1q1pn2/1pP5/P7/2P1NN2/1P2BPPP/R1BQ1RK1 b kq - 0 1",
+            "r3k2r/1b1nbppp/p3pn2/1pq5/P7/2P1NN2/1P2BPPP/R1BQ1RK1 w kq - 0 1",
+            "r3k2r/1b1nbppp/p3pn2/1Pq5/8/2P1NN2/1P2BPPP/R1BQ1RK1 b kq - 0 1",
+            "r3k2r/1b1nbppp/4pn2/1pq5/8/2P1NN2/1P2BPPP/R1BQ1RK1 w kq - 0 1",
+            "R3k2r/1b1nbppp/4pn2/1pq5/8/2P1NN2/1P2BPPP/2BQ1RK1 b k - 0 1",
+            "b3k2r/3nbppp/4pn2/1pq5/8/2P1NN2/1P2BPPP/2BQ1RK1 w k - 0 1",
+        ]
+
+        let readyIndex = stream.lineCount
+        engine.sendCommand("setoption name Hash value 64")
+        engine.sendCommand("ucinewgame")
+        engine.sendCommand("isready")
+        _ = try await stream.waitForLine(prefix: "readyok", after: readyIndex, timeout: .seconds(10))
+
+        for (index, fen) in positions.enumerated() {
+            let startIndex = stream.lineCount
+            engine.sendCommand("position fen \(fen)")
+            engine.sendCommand("go depth 8")
+
+            let line = try await stream.waitForLine(
+                prefix: "bestmove",
+                after: startIndex,
+                timeout: .seconds(30)
+            )
+            let move = try #require(Self.bestmoveToken(from: line))
+            #expect(
+                Self.isValidBestmoveToken(move),
+                "Unexpected bestmove token for bare-FEN search \(index + 1): \(move)"
+            )
+        }
+    }
+
+    @Test
+    func inconsistentCastlingRightsAreRejected() async throws {
+        let (engine, stream) = try await startEngine()
+        defer { engine.stop() }
+
+        let invalidFEN = "R3k2r/1b1nbppp/4pn2/1pq5/8/2P1NN2/1P2BPPP/2BQ1RK1 b kq - 0 1"
+        let rejectionIndex = stream.lineCount
+        engine.sendCommand("debug on")
+        engine.sendCommand("position fen \(invalidFEN)")
+
+        let warning = try await stream.waitForLine(
+            prefix: "info string warning: invalid fen!",
+            after: rejectionIndex,
+            timeout: .seconds(5)
+        )
+        #expect(warning == "info string warning: invalid fen!")
+
+        let recoveryIndex = stream.lineCount
+        engine.sendCommand("debug off")
+        engine.sendCommand("position startpos")
+        engine.sendCommand("go depth 1")
+        _ = try await stream.waitForLine(
+            prefix: "bestmove",
+            after: recoveryIndex,
+            timeout: .seconds(10)
+        )
+    }
+
+    @Test
     func processWideSingleEnginePolicyAllowsRejectedInstanceToRetry() async throws {
         let first = ArasanEngine { _ in }
         let secondStream = EngineLineStream()

@@ -9,17 +9,17 @@ https://github.com/jdart1/arasan-chess
 Current vendored upstream commit:
 
 ```text
-d507b7cc583c1f0a4d02a794384b6fce2947e1a1
+e3e6f436f223f8df8b762897a8ba189f069ee596
 ```
 
 Commit message:
 
 ```text
-Fix clamping/limiting code for LMR. Fixes #71.
+Add some sanity checking in readFEN for castling status. Fixes #72.
 ```
 
-Upstream describes this snapshot as `v26.0-18-gd507b7cc`: the Arasan 26.0
-release plus eighteen subsequent commits on `master`.
+Upstream describes this snapshot as `v26.0-25-ge3e6f436`: the Arasan 26.0
+release plus twenty-five subsequent commits on `master`.
 
 ## Included Upstream Material
 
@@ -77,6 +77,12 @@ clamp workaround for that debug assertion.
 Arasan's late-move-reduction clamp fix for issue #71 is included upstream in
 commit `d507b7cc`. The package carries that corrected search code directly and
 does not maintain a duplicate local patch.
+
+Arasan's response to the bare-FEN correction-history report in issue #72 is
+included upstream in commit `e3e6f436`. The package carries the added
+castling-state validation directly and exercises both invalid-rights rejection
+and the reported ten-position sequence with valid castling rights in its
+integration tests.
 
 No local adjustment is carried in `ThirdParty/Arasan/src/globals.cpp`. The
 package-owned embedded entry point instead calls

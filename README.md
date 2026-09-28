@@ -16,8 +16,8 @@ macOS. It includes a root `Package.swift`, SPI metadata, semantic-versioned
 releases, package tests, an optional manually dispatched GitHub Actions
 workflow, and product documentation.
 
-The current engine snapshot is upstream commit `d507b7cc`, described by
-upstream as `v26.0-18-gd507b7cc`: Arasan 26.0 plus eighteen subsequent commits
+The current engine snapshot is upstream commit `e3e6f436`, described by
+upstream as `v26.0-25-ge3e6f436`: Arasan 26.0 plus twenty-five subsequent commits
 on `master`.
 
 `ArasanEmbedded` is suitable for Swift Package Index submission. SPI indexing

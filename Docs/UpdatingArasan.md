@@ -111,6 +111,10 @@ The late-move-reduction clamp fix for Arasan issue #71 was accepted upstream in
 Arasan commit `d507b7cc`, so it should also remain an unmodified upstream fix
 rather than a package-local patch.
 
+The castling-state validation added in response to Arasan issue #72 was
+accepted upstream in Arasan commit `e3e6f436`, so it should also remain
+unmodified upstream code rather than a package-local patch.
+
 ## 6. Validate
 
 Confirm that the explicit native source list in `Package.swift` still matches

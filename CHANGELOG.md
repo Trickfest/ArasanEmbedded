@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.3.1 - 2026-09-28
+
+### Changed
+
+- Refresh vendored Arasan source to upstream `master` commit
+  `e3e6f436f223f8df8b762897a8ba189f069ee596` (`v26.0-25-ge3e6f436`) while
+  retaining the current NNUE, Fathom revision, embedded stream-input
+  adjustment, package-owned global initializer, and 4 MiB engine-thread stack.
+- Compare public API compatibility against the previously released `v1.3.0`
+  package baseline.
+
+### Fixed
+
+- Include Arasan's upstream issue #72 fix, which rejects FEN positions whose
+  castling rights conflict with the pieces on the board.
+- Add integration regressions for that invalid-FEN rejection and for repeated
+  depth-8 searches across the reported position sequence with valid castling
+  rights.
+
 ## 1.3.0 - 2026-09-15
 
 ### Changed

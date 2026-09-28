@@ -82,7 +82,7 @@ let package = Package(
                 .define("SIMD"),
                 .define("NEON"),
                 .define("ARASAN_EMBEDDED_STREAM_INPUT"),
-                .define("ARASAN_VERSION", to: "embedded-master-d507b7cc"),
+                .define("ARASAN_VERSION", to: "embedded-master-e3e6f436"),
                 .define("NETWORK", to: "arasanv8-20260906.nnue"),
                 .define(
                     "_LIBCPP_HARDENING_MODE",
