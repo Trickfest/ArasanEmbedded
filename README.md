@@ -1,5 +1,7 @@
 # ArasanEmbedded
 
+[![Swift versions](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2FTrickfest%2FArasanEmbedded%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/Trickfest/ArasanEmbedded) [![Supported platforms](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2FTrickfest%2FArasanEmbedded%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/Trickfest/ArasanEmbedded)
+
 `ArasanEmbedded` embeds the MIT-licensed Arasan chess engine in a Swift package
 for Apple-platform chess apps. It exposes a small Swift API for starting Arasan,
 configuring runtime assets, sending UCI commands, and receiving UCI output.
@@ -20,9 +22,10 @@ The current engine snapshot is upstream commit `e3e6f436`, described by
 upstream as `v26.0-25-ge3e6f436`: Arasan 26.0 plus twenty-five subsequent commits
 on `master`.
 
-`ArasanEmbedded` is suitable for Swift Package Index submission. SPI indexing
-requires the GitHub repository to be public and a semantic version tag to be
-available on the default branch.
+`ArasanEmbedded` is listed on
+[Swift Package Index](https://swiftpackageindex.com/Trickfest/ArasanEmbedded).
+The badges above report SPI's live compatibility results and may show a pending
+state until its build system completes the package's initial builds.
 
 ## Requirements
 
