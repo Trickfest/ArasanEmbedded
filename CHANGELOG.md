@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Enable Swift Package Index-hosted DocC documentation and add a concise
+  package overview and quick start.
+- Fill the remaining meaningful public-API documentation gaps for engine and
+  soak-runner configuration.
+
 ## 1.3.1 - 2026-09-28
 
 ### Changed

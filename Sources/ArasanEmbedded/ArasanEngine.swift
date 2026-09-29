@@ -15,6 +15,7 @@ import Foundation
 /// completes, is safe from the line handler, and may be called repeatedly. A
 /// stopped instance may be started again.
 public final class ArasanEngine: @unchecked Sendable {
+    /// Receives one UCI output line on the wrapper-owned serial background queue.
     public typealias LineHandler = @Sendable (String) -> Void
 
     private let core: AEEngine
@@ -104,6 +105,22 @@ public extension ArasanEngine {
         /// Arasan's `SyzygyUse50MoveRule` UCI option.
         public var syzygyUses50MoveRule: Bool
 
+        /// Creates an engine configuration.
+        ///
+        /// - Parameters:
+        ///   - nnueURL: The Arasan NNUE network to load. The bundled network is
+        ///     used by default.
+        ///   - useOpeningBook: Whether Arasan may choose moves from an opening
+        ///     book.
+        ///   - openingBookURL: An optional caller-provided Arasan `book.bin`
+        ///     file. It must exist when opening-book use is enabled.
+        ///   - useTablebases: Whether Arasan may probe Syzygy tablebases.
+        ///   - tablebaseDirectoryURL: The directory containing caller-provided
+        ///     Syzygy files. It is required when tablebase use is enabled.
+        ///   - tablebaseProbeDepth: The optional `SyzygyProbeDepth` value in
+        ///     Arasan's supported `0...64` range.
+        ///   - syzygyUses50MoveRule: Whether Syzygy probing observes the
+        ///     fifty-move rule.
         public init(
             nnueURL: URL = ArasanEngine.defaultNNUEURL,
             useOpeningBook: Bool = false,
@@ -153,6 +170,7 @@ public extension ArasanEngine {
         /// The configured Syzygy probe depth is outside Arasan's range.
         case invalidTablebaseProbeDepth(Int)
 
+        /// A human-readable explanation of the startup or configuration error.
         public var errorDescription: String? {
             switch self {
             case .startFailed:

@@ -79,6 +79,10 @@ public final class ArasanSoakRunner: @unchecked Sendable {
     /// terminal, and a successfully started engine emits `.stopped` first.
     /// The handler participates in protocol consumption and must return
     /// promptly; long blocking work can delay response recognition.
+    ///
+    /// - Parameter eventHandler: Receives raw engine output and structured
+    ///   progress events in protocol order.
+    /// - Returns: Final counters and elapsed time for the run.
     public func run(
         eventHandler: @escaping @Sendable (Event) -> Void = { _ in }
     ) async -> Summary {
@@ -302,6 +306,11 @@ public extension ArasanSoakRunner {
         /// Either the literal `startpos` or a full four/six-field FEN.
         public var fen: String
 
+        /// Creates a position specification.
+        ///
+        /// - Parameters:
+        ///   - id: An optional stable label for logs and failures.
+        ///   - fen: Either `startpos` or a full four- or six-field FEN.
         public init(id: String = "", fen: String) {
             self.id = id
             self.fen = fen
@@ -359,6 +368,30 @@ public extension ArasanSoakRunner {
         /// Extra trusted, single-line UCI options sent after startup readiness.
         public var engineOptions: [String]
 
+        /// Creates a soak-run configuration.
+        ///
+        /// - Parameters:
+        ///   - positions: One or more positions that the runner searches in a
+        ///     repeating cycle.
+        ///   - engineConfiguration: Runtime assets and options applied when the
+        ///     embedded engine starts.
+        ///   - searchLimit: The depth, node count, or move time used for every
+        ///     search.
+        ///   - maxIterations: A positive iteration limit, or `nil` to continue
+        ///     until stopped or cancelled.
+        ///   - perMoveTimeout: Positive seconds allowed for a normal search.
+        ///   - stopTimeout: Positive seconds allowed for the terminal
+        ///     `bestmove` after a timed-out search is stopped.
+        ///   - handshakeTimeout: Positive seconds allowed for each UCI
+        ///     readiness response.
+        ///   - delayBetweenIterations: Optional nonnegative seconds to wait
+        ///     between searches.
+        ///   - readyCheckEveryIteration: Whether to require `readyok` before
+        ///     each search.
+        ///   - stopOnTimeoutFailure: Whether to finish the run after a timeout
+        ///     that successfully reaches its terminal `bestmove`.
+        ///   - engineOptions: Additional trusted, single-line UCI option
+        ///     commands sent after startup readiness.
         public init(
             positions: [PositionSpec],
             engineConfiguration: ArasanEngine.Configuration = .default,

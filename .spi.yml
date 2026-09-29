@@ -5,3 +5,4 @@ builder:
       scheme: ArasanEmbedded
     - platform: macos-spm
       scheme: ArasanEmbedded
+      documentation_targets: [ArasanEmbedded]
