@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- Explicitly select the library scheme for Swift Package Index macOS Xcode
+  builds to avoid automatic scheme-discovery failures.
+
 ### Added
 
 - Enable Swift Package Index-hosted DocC documentation and add a concise

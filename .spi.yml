@@ -3,6 +3,8 @@ builder:
   configs:
     - platform: ios
       scheme: ArasanEmbedded
+    - platform: macos-xcodebuild
+      scheme: ArasanEmbedded
     - platform: macos-spm
       scheme: ArasanEmbedded
       documentation_targets: [ArasanEmbedded]
