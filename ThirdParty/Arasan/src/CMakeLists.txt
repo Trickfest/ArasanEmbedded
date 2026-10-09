@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.12 FATAL_ERROR)
 project(arasan)
 
 add_compile_definitions(ARASAN_VERSION=26.0)
-set(NETWORK arasanv8-20260906.nnue CACHE STRING "default network file name")
+set(NETWORK arasanv8-20261005.nnue CACHE STRING "default network file name")
 
 set(CMAKE_VERBOSE_MAKEFILE ON)
 set(CMAKE_THREAD_PREFER_PTHREAD TRUE)
@@ -172,6 +172,8 @@ add_executable (blundercheck EXCLUDE_FROM_ALL util/blundercheck.cpp ${UTIL_SRC})
 
 add_executable (sortpgn EXCLUDE_FROM_ALL util/sortpgn.cpp ${UTIL_SRC})
 
+add_executable (bulletstats EXCLUDE_FROM_ALL util/bulletstats.cpp ${UTIL_SRC})
+
 add_executable (unit EXCLUDE_FROM_ALL unit.cpp nnuetest.cpp util/binformat.cpp ${UTIL_SRC})
 
 target_link_libraries(${EXE_NAME} PRIVATE Threads::Threads)
@@ -181,10 +183,11 @@ target_link_libraries(makebook PRIVATE Threads::Threads)
 target_link_libraries(selfplay PRIVATE Threads::Threads)
 target_link_libraries(blundercheck PRIVATE Threads::Threads)
 target_link_libraries(sortpgn PRIVATE Threads::Threads)
+target_link_libraries(bulletstats PRIVATE Threads::Threads)
 target_link_libraries(unit PRIVATE Threads::Threads)
 
-set_target_properties(${EXE_NAME} playchess makebook ecocoder selfplay blundercheck sortpgn unit PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
+set_target_properties(${EXE_NAME} playchess makebook ecocoder selfplay blundercheck sortpgn bulletstats unit PROPERTIES INTERPROCEDURAL_OPTIMIZATION TRUE)
 
 add_custom_target(utils)
 
-add_dependencies(utils playchess ecocoder makebook selfplay blundercheck sortpgn)
+add_dependencies(utils playchess ecocoder makebook selfplay blundercheck sortpgn bulletstats)

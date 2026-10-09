@@ -94,12 +94,15 @@ struct ArasanEngineIntegrationTests {
     }
 
     @Test
-    func inconsistentCastlingRightsAreRejected() async throws {
+    func inconsistentCastlingRightsPreservePreviousPositionAndAllowSearch() async throws {
         let (engine, stream) = try await startEngine()
         defer { engine.stop() }
 
         let invalidFEN = "R3k2r/1b1nbppp/4pn2/1pq5/8/2P1NN2/1P2BPPP/2BQ1RK1 b kq - 0 1"
         let rejectionIndex = stream.lineCount
+        // Leave Black to move in a known valid position. Issue #73 previously
+        // let a rejected FEN partially overwrite this board and abort a search.
+        engine.sendCommand("position startpos moves e2e4")
         engine.sendCommand("debug on")
         engine.sendCommand("position fen \(invalidFEN)")
 
@@ -112,13 +115,39 @@ struct ArasanEngineIntegrationTests {
 
         let recoveryIndex = stream.lineCount
         engine.sendCommand("debug off")
-        engine.sendCommand("position startpos")
-        engine.sendCommand("go depth 1")
-        _ = try await stream.waitForLine(
+        engine.sendCommand("go depth 8")
+        let bestMove = try await stream.waitForLine(
             prefix: "bestmove",
             after: recoveryIndex,
-            timeout: .seconds(10)
+            timeout: .seconds(30)
         )
+        let legalBlackReplies = Set([
+            "a7a6", "a7a5", "b7b6", "b7b5", "c7c6", "c7c5", "d7d6", "d7d5",
+            "e7e6", "e7e5", "f7f6", "f7f5", "g7g6", "g7g5", "h7h6", "h7h5",
+            "b8a6", "b8c6", "g8f6", "g8h6",
+        ])
+        let move = try #require(Self.bestmoveToken(from: bestMove))
+        #expect(legalBlackReplies.contains(move))
+    }
+
+    @Test
+    func malformedFENLeavesBoardAndHashUnchanged() async throws {
+        let (engine, _) = try await startEngine()
+        defer { engine.stop() }
+
+        let invalidFENs = [
+            "R3k2r/1b1nbppp/4pn2/1pq5/8/2P1NN2/1P2BPPP/2BQ1RK1 b kq - 0 1",
+            "4k3/8/8/7/8/8/8/4K3 w - - 0 1", // Short rank.
+            "4k3/8/8/9/8/8/8/4K3 w - - 0 1", // Overfull rank.
+            "4k3/8/8/8/8/8/8/4K", // Truncated board.
+            "4k3/8/8/8/8/8/8/4K3 w - d", // Truncated en-passant square.
+            "8/8/8/8/8/8/8/8 w - - 0 1", // Missing kings.
+            "",
+        ]
+        for fen in invalidFENs {
+            #expect(AERejectedFENPreservesBoardForTesting(fen), "Rejected FEN changed board: \(fen)")
+        }
+        #expect(AEFENEnPassantHashIsConsistentForTesting())
     }
 
     @Test

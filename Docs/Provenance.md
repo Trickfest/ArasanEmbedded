@@ -9,17 +9,17 @@ https://github.com/jdart1/arasan-chess
 Current vendored upstream commit:
 
 ```text
-e3e6f436f223f8df8b762897a8ba189f069ee596
+d013300031c382061d37941ca6acad43cd525145
 ```
 
 Commit message:
 
 ```text
-Add some sanity checking in readFEN for castling status. Fixes #72.
+Simplfy duplicate detection in testMovegen
 ```
 
-Upstream describes this snapshot as `v26.0-25-ge3e6f436`: the Arasan 26.0
-release plus twenty-five subsequent commits on `master`.
+Upstream describes this snapshot as `v26.0-36-gd0133000`: the Arasan 26.0
+release plus thirty-six subsequent commits on `master`.
 
 ## Included Upstream Material
 
@@ -35,14 +35,14 @@ The vendored copy under `ThirdParty/Arasan` includes:
 The package currently bundles this Arasan NNUE file as a SwiftPM resource:
 
 ```text
-ThirdParty/Arasan/network/arasanv8-20260906.nnue
+ThirdParty/Arasan/network/arasanv8-20261005.nnue
 ```
 
 Its checked-in identity is:
 
 ```text
 Byte count: 25024576
-SHA-256: b6d294733da12b99bd0f6c760dce2a3744f3344d94f9956ead36eb5c281b4831
+SHA-256: 1f98bc6c1ac615646d66d409e138225c56765ad0c1065f1ce20a22a56c631927
 Format header: 41 52 41 08 (ARA plus version 8)
 ```
 
@@ -84,6 +84,13 @@ castling-state validation directly and exercises both invalid-rights rejection
 and the reported ten-position sequence with valid castling rights in its
 integration tests.
 
+Arasan's issue #73 fix is included upstream in commit `89566585`: FEN parsing
+uses a temporary board and only replaces the current position on success.
+Commit `3fa256bc` also rejects malformed ranks, avoids reading past truncated
+input, and corrects the en-passant hash calculation. The package carries these
+as unmodified upstream code, with regressions for board/hash preservation and
+a depth-8 UCI search after rejecting the originally reported castling FEN.
+
 No local adjustment is carried in `ThirdParty/Arasan/src/globals.cpp`. The
 package-owned embedded entry point instead calls
 `initArasanEmbeddedGlobals()`, which mirrors upstream
@@ -91,6 +98,10 @@ package-owned embedded entry point instead calls
 `AEEngine` supplies the required 4 MiB pthread stack directly, preventing the
 upstream failure path from terminating a physical Apple host. The two
 initializers must be reconciled whenever the upstream snapshot changes.
+For this refresh, upstream initialization, cleanup, and thread-stack
+requirements are unchanged; the package's native source list still covers the
+engine entry path. The new NNUE retains the previous byte count and version-8
+header, so the Swift and native format preflight constants are unchanged.
 
 Package-owned bridge code converts Fathom's otherwise fatal allocation/mapping
 paths into C++ exceptions at the include boundary and catches them on the

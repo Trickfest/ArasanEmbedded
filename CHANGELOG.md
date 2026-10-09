@@ -2,8 +2,24 @@
 
 ## Unreleased
 
+## 1.4.0 - 2026-10-09
+
+### Changed
+
+- Refresh vendored Arasan to `d013300031c382061d37941ca6acad43cd525145`
+  (`v26.0-36-gd0133000`), including material-dependent evaluation scaling and
+  search/test updates.
+- Bundle `arasanv8-20261005.nnue` in place of the previous network; retain the
+  unchanged version-8 format, Fathom revision, embedded stream-input patch,
+  package-owned global initializer, and 4 MiB engine-thread stack.
+- Compare public API compatibility against the released `v1.3.1` baseline.
+
 ### Fixed
 
+- Include upstream issue #73's fix: rejecting an invalid FEN preserves the
+  prior valid board, allowing a subsequent search without a reset or abort.
+- Include upstream malformed-rank and truncated-FEN checks and the corrected
+  en-passant hash calculation, with package regressions for these behaviors.
 - Explicitly select the library scheme for Swift Package Index macOS Xcode
   builds to avoid automatic scheme-discovery failures.
 

@@ -18,7 +18,7 @@ The script validates the manifest; performs Debug and Release builds; confirms
 Release binaries do not import native assertions; runs the normal and Thread
 Sanitizer suites; exercises both CLIs, a child-process startup with a constrained
 stack limit, and invalid-input paths; builds for an iOS simulator and a generic
-iOS device; checks the public API against the configured `v1.3.0` baseline; and
+iOS device; checks the public API against the configured `v1.3.1` baseline; and
 verifies all three required worktree
 license files. On a clean checkout it also checks those licenses inside the
 committed SwiftPM source archive. `swift package archive-source` archives Git
@@ -80,6 +80,11 @@ The package tests live in `Tests/ArasanEmbeddedTests`.
 - inconsistent castling rights from issue #72 are rejected, and the same
   ten-position bare-FEN sequence with valid castling rights completes repeated
   depth-8 searches without reading outside correction-history storage
+- issue #73's rejected castling FEN leaves the prior valid position searchable
+  through depth 8 without sending a replacement position
+- malformed ranks, truncated FEN input, and missing kings leave the prior board,
+  hash, and repetition state unchanged; valid en-passant FENs have consistent
+  position and repetition hashes
 - the process-wide single-engine policy is enforced
 - startup emits identity, option, `uciok`, and `readyok` lines
 - repeated `isready` probes return `readyok`

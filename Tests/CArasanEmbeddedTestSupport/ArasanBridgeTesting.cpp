@@ -3,6 +3,8 @@
 #include "AEEngineStreams.hpp"
 #include "ArasanEmbeddedUCI.hpp"
 #include "globals.h"
+#include "boardio.h"
+#include "bhash.h"
 
 #include <ios>
 #include <iostream>
@@ -91,6 +93,34 @@ protected:
 };
 
 } // namespace
+
+bool AERejectedFENPreservesBoardForTesting(const char *fen) {
+    // The serialized integration suite calls this only after engine startup
+    // has initialized the process-wide board and attack tables.
+    Board board;
+    if (!BoardIO::readFEN(board, "4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1")) {
+        return false;
+    }
+    std::string before;
+    BoardIO::writeFEN(board, before, true);
+    const auto hash = board.hashCode();
+    const auto repetitionHash = board.repList[0];
+    const auto moveCount = board.state.moveCount;
+    if (BoardIO::readFEN(board, fen)) {
+        return false;
+    }
+    std::string after;
+    BoardIO::writeFEN(board, after, true);
+    return before == after && hash == board.hashCode() &&
+        repetitionHash == board.repList[0] && moveCount == board.state.moveCount;
+}
+
+bool AEFENEnPassantHashIsConsistentForTesting(void) {
+    Board board;
+    return BoardIO::readFEN(board, "4k3/8/8/3pP3/8/8/8/4K3 w - d6 0 1") &&
+        board.hashCode() == BoardHash::hashCode(board) &&
+        board.repList[0] == board.hashCode();
+}
 
 bool AEOutputFlushPreservesLineForTesting(void) {
     std::vector<std::string> lines;

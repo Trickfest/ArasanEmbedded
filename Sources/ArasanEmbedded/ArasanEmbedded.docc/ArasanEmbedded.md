@@ -29,6 +29,11 @@ Starting an engine sends `uci`, applies its resource options, and then sends
 `isready`. A production client should wait for both `uciok` and `readyok`
 before beginning a search.
 
+Set the position with `position startpos` or a valid `position fen ...`
+command before searching. The current engine leaves the previous valid board
+intact when it rejects a malformed FEN. This is a recovery safeguard, not a
+substitute for validating user-provided positions in your app.
+
 > Important: Arasan uses process-global state, so only one engine may be
 > active in a process. Output arrives in order on a background serial queue.
 > Dispatch UI work to the main actor, and call the blocking `stop()` method

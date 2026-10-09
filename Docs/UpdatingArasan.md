@@ -115,6 +115,12 @@ The castling-state validation added in response to Arasan issue #72 was
 accepted upstream in Arasan commit `e3e6f436`, so it should also remain
 unmodified upstream code rather than a package-local patch.
 
+The invalid-FEN board-preservation fix for issue #73 was accepted upstream in
+commit `89566585`, followed by malformed-rank, truncated-input, and en-passant
+hash fixes in `3fa256bc`. Keep these as upstream code. Integration tests must
+verify that a rejected FEN leaves the previous board and hash unchanged and
+that a subsequent search works without resetting the position.
+
 ## 6. Validate
 
 Confirm that the explicit native source list in `Package.swift` still matches

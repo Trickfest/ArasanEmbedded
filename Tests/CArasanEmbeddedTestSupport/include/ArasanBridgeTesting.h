@@ -8,6 +8,8 @@ extern "C" {
 #endif
 
 bool AEOutputFlushPreservesLineForTesting(void);
+bool AERejectedFENPreservesBoardForTesting(const char *fen);
+bool AEFENEnPassantHashIsConsistentForTesting(void);
 bool AEConcurrentOutputPreservesSubmissionOrderForTesting(void);
 bool AEStandardStreamsRestoreForTesting(void);
 bool AEEmbeddedGlobalsAllocatedForTesting(void);
