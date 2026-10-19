@@ -4,6 +4,9 @@ Arasan can use an opening book through its UCI `OwnBook` and `BookPath` options.
 `ArasanEmbedded` supports these options but keeps opening book usage disabled by
 default.
 
+An opening book supplies precomputed opening moves instead of making the
+engine search for every move from the start of a game.
+
 ## Why Disabled By Default
 
 Opening books are useful for game play, but normal tests and examples should not

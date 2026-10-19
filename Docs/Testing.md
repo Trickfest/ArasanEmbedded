@@ -6,7 +6,7 @@ asset options, host stream-state restoration, and repeated search behavior. It
 has no GUI test target because the package is SwiftPM-first and exposes a
 Swift-facing API.
 
-## Full Local Release Gate
+## Full local validation
 
 Run this gate before a public release or before committing behavior changes:
 
@@ -26,12 +26,25 @@ HEAD rather than dirty/untracked files, so the script explicitly skips that
 archive assertion during pre-commit work. It uses `iPhone 17 Pro` by default;
 set `ARASAN_IOS_SIMULATOR_NAME` to another available simulator when needed.
 
+The gate builds Release but does not currently run `swift test -c release`.
+Its iOS commands are build checks, not on-device XCTest execution. DocC builds
+are separate. Do not count optional Syzygy tests or longer corpus soaks as
+part of the default offline gate.
+
 The simulator runs inside a macOS host process, so a successful simulator build
 or launch does not exercise every physical iOS process limit. Changes to native
 startup, global initialization, or thread creation require the physical-device
 consumer smoke below in addition to `Scripts/validate.sh`.
 
-## Physical iOS Consumer Smoke
+## Shared consumer checks
+
+[SwiftChessDemo](https://github.com/Trickfest/SwiftChessDemo) is the shared
+end-to-end app for Arasan and Stockfish. Its real-provider and simulator UI
+tests complement package tests; deterministic replay and fake-transport tests
+must not be described as native engine gameplay. Keep the existing CLI tools
+for non-UI checks rather than creating another integration app.
+
+### Physical iOS consumer smoke
 
 Before releasing a change to native startup or thread creation:
 
@@ -45,7 +58,15 @@ Before releasing a change to native startup or thread creation:
    and no Arasan startup error appears.
 6. Restore the normally resolved package before finishing.
 
-## Swift Testing Suite
+## Package tests
+
+These checks use the bundled network and offline fixtures:
+
+```sh
+swift package dump-package
+swift build
+swift test
+```
 
 The package tests live in `Tests/ArasanEmbeddedTests`.
 

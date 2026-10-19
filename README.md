@@ -2,225 +2,189 @@
 
 [![Swift versions](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2FTrickfest%2FArasanEmbedded%2Fbadge%3Ftype%3Dswift-versions)](https://swiftpackageindex.com/Trickfest/ArasanEmbedded) [![Supported platforms](https://img.shields.io/endpoint?url=https%3A%2F%2Fswiftpackageindex.com%2Fapi%2Fpackages%2FTrickfest%2FArasanEmbedded%2Fbadge%3Ftype%3Dplatforms)](https://swiftpackageindex.com/Trickfest/ArasanEmbedded)
 
-`ArasanEmbedded` embeds the MIT-licensed Arasan chess engine in a Swift package
-for Apple-platform chess apps. It exposes a small Swift API for starting Arasan,
-configuring runtime assets, sending UCI commands, and receiving UCI output.
+ArasanEmbedded runs the Arasan chess engine in-process from an iOS, iPadOS, or
+macOS app. This SwiftPM-first package's small Swift API, `ArasanEngine`,
+configures runtime assets, sends UCI commands, and receives UCI output.
 
-This package is intentionally narrow. It is not a chess rules library, not a
-SwiftUI board, and not a full analysis framework. Use `SwiftChessTools` for
-rules, notation, UI, and UCI parsing helpers; use `ArasanEmbedded` when an app
-needs a permissively licensed in-process engine.
+This package is the engine bridge, not a chess rules library, board UI, or UCI
+parser. Use [SwiftChessTools](https://github.com/Trickfest/SwiftChessTools) for
+those pieces. [SwiftChessDemo](https://github.com/Trickfest/SwiftChessDemo)
+shows both embedded engines working in one app.
 
-## Status
+## Before you start
 
-This repository is a SwiftPM-first embedded Arasan package for iOS, iPadOS, and
-macOS. It includes a root `Package.swift`, SPI metadata, semantic-versioned
-releases, package tests, an optional manually dispatched GitHub Actions
-workflow, and product documentation.
+- **License:** Package-owned code, Arasan, and the bundled network use
+  permissive MIT licensing. Preserve the package, Arasan, and Fathom notices;
+  see [Licensing](#licensing).
+- **Requirements:** Swift 6.2 or newer and Xcode 26 or newer, targeting
+  iOS/iPadOS 26 or macOS 26 and later. Apple arm64 is supported; Intel Macs and
+  x86_64 simulators are not.
+- **Network:** The required NNUE file is bundled as a package resource. Default
+  searches need no separate download. Opening books and Syzygy tablebases are
+  optional, caller-owned assets and are disabled by default.
 
-The current engine snapshot is upstream commit `d0133000`, described by
-upstream as `v26.0-36-gd0133000`: Arasan 26.0 plus thirty-six subsequent commits
-on `master`. It bundles `arasanv8-20261005.nnue`; no separate network download
-is needed.
-
-`ArasanEmbedded` is listed on
-[Swift Package Index](https://swiftpackageindex.com/Trickfest/ArasanEmbedded).
-The badges above report SPI's live compatibility results and may show a pending
-state until its build system completes the package's initial builds.
-
-## Requirements
-
-- Swift 6.2 or newer
-- Xcode 26 or newer
-- iOS/iPadOS 26 or newer
-- macOS 26 or newer
-- Apple Silicon/arm64 build targets. Intel macOS and x86_64 simulator builds
-  are not supported by the current package build configuration.
+The badges link to the Swift Package Index's compatibility results. They are
+separate from this repository's local validation instructions.
 
 ## Installation
 
-Add the package through SwiftPM or Xcode:
+In Xcode, choose **File > Add Package Dependencies**, enter
+`https://github.com/Trickfest/ArasanEmbedded.git`, and add the `ArasanEmbedded`
+product to your app target.
+
+For a manifest-based client, add these entries to its existing manifest:
 
 ```swift
-.package(url: "https://github.com/Trickfest/ArasanEmbedded.git", from: "1.0.0")
+dependencies: [
+    .package(
+        url: "https://github.com/Trickfest/ArasanEmbedded.git",
+        from: "1.4.0"
+    ),
+],
+targets: [
+    .target(
+        name: "MyApp",
+        dependencies: [
+            .product(name: "ArasanEmbedded", package: "ArasanEmbedded"),
+        ]
+    ),
+]
 ```
 
-Then depend on the library product:
+This example selects the source generation described below. When choosing
+another version, use that version's setup instructions.
 
-```swift
-.product(name: "ArasanEmbedded", package: "ArasanEmbedded")
-```
+## Quick start with Swift Package Manager
 
-## Quick Start
+### Use the bundled network
+
+NNUE stands for *Efficiently Updatable Neural Network*. It is the data Arasan
+uses to evaluate chess positions, not another executable. This snapshot bundles
+`arasanv8-20261005.nnue`, 25,024,576 bytes: roughly 25 MB (24 MiB).
+SwiftPM copies it into the package
+resource bundle; you do not add it to your app manually.
+
+### Run one search
+
+This example buffers output, waits for readiness, then stops after one
+`bestmove`. The detached task keeps blocking shutdown off the UI actor.
 
 ```swift
 import ArasanEmbedded
 
-let engine = ArasanEngine { line in
-    print(line)
-}
+let searchTask = Task.detached {
+    let (lines, output) = AsyncStream<String>.makeStream()
+    let engine = ArasanEngine { line in
+        output.yield(line)
+    }
+    defer {
+        engine.stop()
+        output.finish()
+    }
 
-try engine.start()
-engine.sendCommand("position startpos moves e2e4")
-engine.sendCommand("go depth 8")
+    try engine.start()
+    var receivedUCI = false
 
-// Watch the line handler for `bestmove ...`, then stop when finished.
-engine.stop()
-```
-
-`start()` sends `uci`, applies the configured resource options, and sends
-`isready`. A production app should wait for `uciok` and `readyok` before
-starting a search.
-
-## Runtime Contract
-
-Arasan uses process-global state and temporarily redirects the process's C++
-standard streams. Run only one `ArasanEngine` at a time in a process. The
-wrapper enforces that policy within one linked copy of this package; an app
-must not load multiple copies and run them concurrently.
-
-The line handler runs in protocol order on a wrapper-owned serial background
-queue, not the main actor. Dispatch UI updates to the main actor. `stop()` is
-idempotent and safe to call from the line handler, but it blocks until native
-teardown completes, so UI code should call it away from the main actor. A
-stopped instance can be started again.
-
-The engine receives an explicit 4 MiB pthread stack without changing the host
-process's stack resource limit. The embedded entry point intentionally calls the
-package-owned `initArasanEmbeddedGlobals()` instead of upstream
-`globals::initGlobals()`: upstream's version attempts a process-wide stack-limit
-increase that physical Apple devices can reject even though the explicitly
-sized engine thread is valid. The package-owned initializer mirrors the
-upstream function's non-stack initialization and must be reconciled whenever
-the vendored engine is updated.
-
-`sendCommand(_:)` accepts one trusted UCI command line. It rejects multiline
-input, embedded NULs, commands larger than 1 MiB, and runtime attempts to
-replace the NNUE network. Create a newly configured engine when changing NNUE,
-and do not pass untrusted user text directly to UCI. The wrapper also fixes
-Arasan's `Threads` option at `1`: the current vendored pool cannot safely shrink
-an in-process worker during teardown without a vendor change.
-
-`ArasanSoakRunner` also serializes its event handler on the protocol-consumption
-path. Keep that handler fast and dispatch logging or other slow work elsewhere;
-blocking it can delay response recognition and grow the in-memory output
-backlog.
-
-## Runtime Assets
-
-Arasan uses several optional or required runtime assets. `ArasanEmbedded` makes
-those choices explicit:
-
-- NNUE network: bundled by default.
-- Opening book: supported, but disabled by default.
-- Syzygy tablebases: supported through caller-provided paths, but not bundled.
-
-The default configuration is intentionally predictable:
-
-```swift
-let engine = ArasanEngine(configuration: .default) { line in
-    print(line)
+    for await line in lines {
+        print(line)
+        if line.hasPrefix("info string ArasanEmbedded error")
+            || line.hasPrefix("bestmove ") {
+            break
+        }
+        if line == "uciok" {
+            receivedUCI = true
+        } else if line == "readyok" && receivedUCI {
+            engine.sendCommand("position startpos")
+            engine.sendCommand("go depth 8")
+        }
+    }
 }
 ```
 
-That uses the bundled NNUE file, disables opening book moves, and disables
-tablebase probing.
+Keep `searchTask` so you can cancel it when leaving the screen. In an async
+command-line client, use `try await searchTask.value` to keep the process alive
+and observe startup errors. A UI owner should also observe that throwing task's
+result and present any error. This one-search example has no startup deadline;
+a production session also needs timeouts. See [Examples](Docs/Examples.md)
+and SwiftChessDemo's engine providers for a fuller lifecycle.
 
-Before startup, the wrapper checks that the configured NNUE is a regular file
-with the byte count and format header required by this vendored Arasan
-snapshot. Caller-provided NNUE paths must remain stable until startup has
-finished. Opening-book and tablebase paths are also constrained to one safe UCI
-line; the wrapper validates their existence when the related feature is
-enabled, but it does not checksum caller-provided assets.
+## Runtime assets
 
-## Opening Book
+The default `ArasanEngine.Configuration` selects the bundled network and
+disables opening books and tablebases. Before startup, the wrapper checks that
+the network is a regular file with the required byte count and format header.
+A custom network must match the vendored format and remain stable through startup.
 
-Opening books make the engine play precomputed opening moves instead of
-searching from the first move. `ArasanEmbedded` leaves opening books disabled by
-default so normal tests and examples do not depend on an external `book.bin` or
-book-move selection policy. Apps can opt in explicitly when they want book play.
+Configure optional resources before creating/starting the engine:
 
-Enable a caller-provided Arasan `book.bin` file:
+- [Opening books](Docs/OpeningBooks.md): opt into a caller-provided Arasan
+  `book.bin` file.
+- [Syzygy tablebases](Docs/Tablebases.md): opt into a caller-provided directory
+  of endgame tables.
+- [Examples](Docs/Examples.md): configuration snippets, including custom NNUE.
 
-```swift
-let bookURL = Bundle.main.url(forResource: "book", withExtension: "bin")!
+Paths must be representable as a single safe UCI line. The wrapper checks
+required paths but does not checksum caller-provided books or tablebases.
+Bundled network identity is recorded in [Provenance](Docs/Provenance.md).
 
-let configuration = ArasanEngine.Configuration(
-    useOpeningBook: true,
-    openingBookURL: bookURL
-)
+## Lifecycle and threading
 
-let engine = ArasanEngine(configuration: configuration) { line in
-    print(line)
-}
-```
+- `start()` validates configuration, launches the engine, and sends `uci`,
+  resource options, and `isready`. Wait for both replies before searching;
+  a successful return is not a readiness signal.
+- Output arrives in order on a serial background queue. Dispatch UI updates
+  to the main actor, and keep handlers brief.
+- `sendCommand(_:)` accepts one trusted UCI line. Generate it from validated
+  app state; do not pass arbitrary user text through to native code.
+- `sendCommand("stop")` requests the current search's terminal `bestmove`.
+  `engine.stop()` instead shuts down the wrapper. It is safe to repeat and a
+  stopped instance may be started again.
+- Shutdown blocks through native teardown. Call it off the UI actor. Calling
+  it from the output handler is supported.
+- The embedded engine uses one search thread. Runtime `Threads` and NNUE-file
+  changes are rejected. Create a newly configured engine to change NNUE.
+- `isRunning` reports whether the loop is running, not whether it is ready for
+  a new search.
 
-This maps to Arasan's UCI options:
+Both embedded engines use process-wide C++ streams. Their native ownership
+guards are not a cross-package scheduler: your app must serialize Stockfish
+and Arasan sessions. See [Architecture](Docs/Architecture.md) for the stream
+boundary, native initialization, and repository layout.
 
-```text
-setoption name BookPath value /path/to/book.bin
-setoption name OwnBook value true
-```
+## Reference app
 
-## Syzygy Tablebases
+[SwiftChessDemo](https://github.com/Trickfest/SwiftChessDemo) combines
+ArasanEmbedded, [StockfishEmbedded](https://github.com/Trickfest/StockfishEmbedded),
+and SwiftChessTools for human-versus-engine and engine-versus-engine play,
+evaluation display, suggestions, and move history.
 
-Syzygy tablebases provide perfect endgame knowledge for positions with a small
-number of pieces. They are useful, but too large to bundle in a normal Swift
-package. Even 5-piece Syzygy is close to a gigabyte; 6-piece and 7-piece sets
-are far larger.
+Use the demo as the shared end-to-end example rather than creating a second
+integration app. Neither embedded package owns the app's chess rules or UI.
 
-Enable a user-provided tablebase directory:
+## Testing and troubleshooting
 
-```swift
-let tablebaseURL = URL(fileURLWithPath: "/Users/me/Chess/Syzygy345")
+From a clone on an Apple-silicon Mac, run `Scripts/validate.sh` for the full
+local gate. Its default checks use bundled/offline fixtures; optional Syzygy
+downloads are a separate opt-in step.
 
-let configuration = ArasanEngine.Configuration(
-    useTablebases: true,
-    tablebaseDirectoryURL: tablebaseURL,
-    tablebaseProbeDepth: 4,
-    syzygyUses50MoveRule: true
-)
+[Testing](Docs/Testing.md) distinguishes package tests, CLI smokes/soaks,
+build-only checks, and physical-device checks.
+[Troubleshooting](Docs/Troubleshooting.md) covers configuration failures,
+readiness, engine switching, and unsupported targets. GitHub-hosted validation
+is optional, manually dispatched, and nonblocking.
 
-let engine = ArasanEngine(configuration: configuration) { line in
-    print(line)
-}
-```
+## Maintenance and provenance
 
-This maps to Arasan's UCI options:
+- [Architecture](Docs/Architecture.md): wrapper design and source layout.
+- [Examples](Docs/Examples.md): search and configuration patterns.
+- [Provenance](Docs/Provenance.md): source and network identity.
+- [Updating Arasan](Docs/UpdatingArasan.md): maintainer update procedure.
+- [Changelog](CHANGELOG.md): package change history.
 
-```text
-setoption name SyzygyPath value /Users/me/Chess/Syzygy345
-setoption name SyzygyProbeDepth value 4
-setoption name SyzygyUse50MoveRule value true
-setoption name Use tablebases value true
-```
-
-See `Docs/Tablebases.md` for iOS/macOS storage guidance and failure behavior.
-
-## Testing
-
-Run `Scripts/validate.sh` for the complete offline release gate. See
-`Docs/Testing.md` for its individual checks, Swift Testing suite structure,
-`arasan-smoke`, `arasan-soak`, optional external-asset coverage, optional manual
-GitHub-hosted validation, and the Lichess-derived regression corpus.
-
-GitHub-hosted validation is optional, manual-only, and nonblocking. Dispatch an
-already-published branch or tag with `Scripts/run-github-ci.sh [branch-or-tag]`;
-the helper never commits or pushes local work.
-
-## Relationship To SwiftChessTools
-
-`ArasanEmbedded` speaks UCI. `SwiftChessTools` provides reusable chess rules,
-notation, UI, and `ChessUCI` helpers that can parse or format UCI around an
-engine. A realistic app should usually combine both packages rather than making
-the engine wrapper responsible for game state or UI.
-
-## Relationship To SwiftChessDemo
-
-`SwiftChessDemo` shows how a real app can combine Swift chess rules/UI with an
-embedded engine. It can run games with either `StockfishEmbedded` or
-`ArasanEmbedded`, which makes it the best reference app for seeing this package
-used in a realistic SwiftUI chess-playing experience.
+Current vendored upstream commit: `d013300031c382061d37941ca6acad43cd525145`,
+described by upstream as `v26.0-36-gd0133000`: Arasan 26.0 plus thirty-six
+subsequent commits on `master`. The DocC catalog at
+`Sources/ArasanEmbedded/ArasanEmbedded.docc` documents the public Swift API.
 
 ## Licensing
 
@@ -232,5 +196,6 @@ library products. GUI/font assets, external upstream test corpora, and
 opening-book source material are intentionally not vendored.
 
 Source and binary distributions must preserve the package, Arasan, and Fathom
-license notices. See `LICENSE`, `ThirdParty/Arasan/LICENSE`,
-`ThirdParty/Arasan/src/syzygy/LICENSE`, and `Docs/Provenance.md`.
+license notices. See [LICENSE](LICENSE), [Arasan's license](ThirdParty/Arasan/LICENSE),
+[Fathom's license](ThirdParty/Arasan/src/syzygy/LICENSE), and
+[Provenance](Docs/Provenance.md).

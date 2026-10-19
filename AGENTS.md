@@ -19,6 +19,10 @@ but it is SwiftPM-first and uses Arasan's MIT-licensed engine code.
   from upstream.
 - `Docs/` - product documentation and advanced runtime asset guidance.
 
+Keep the README and DocC quick starts in sync. Public setup, lifecycle, testing,
+and maintenance guidance follows the same outline as StockfishEmbedded, while
+preserving engine-specific behavior and resource/licensing differences.
+
 ## Build And Test
 
 Run the complete offline release gate before committing behavior changes:

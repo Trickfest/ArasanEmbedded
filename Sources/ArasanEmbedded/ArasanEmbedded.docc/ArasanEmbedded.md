@@ -1,57 +1,103 @@
 # ``ArasanEmbedded``
 
-Embed the Arasan UCI chess engine directly in an iOS, iPadOS, or macOS app.
+Run Arasan in-process from an iOS, iPadOS, or macOS app.
 
 ## Overview
 
-ArasanEmbedded packages the MIT-licensed Arasan engine behind a small Swift
-API. It bundles the required NNUE evaluation network, so the default
-configuration is ready to search without downloading an additional model.
+ArasanEmbedded provides an engine bridge, not chess rules, game state, UI, or a
+typed UCI parser. Its Swift API configures runtime assets and forwards UCI
+commands/output. The package, Arasan, and bundled network use permissive MIT
+licensing; retain the package, Arasan, and Fathom notices.
 
-Create an ``ArasanEngine``, start it, and send standard UCI commands:
+## Getting started
+
+Add the `ArasanEmbedded` package product. Its required NNUE evaluation network
+is bundled, so the default configuration needs no separate model download.
+The [README quick start](https://github.com/Trickfest/ArasanEmbedded#quick-start-with-swift-package-manager)
+covers installation and the default resources.
+
+The following one-search task waits for UCI readiness and shuts down off the UI
+actor:
 
 ```swift
 import ArasanEmbedded
 
-let engine = ArasanEngine { line in
-    print(line)
+let searchTask = Task.detached {
+    let (lines, output) = AsyncStream<String>.makeStream()
+    let engine = ArasanEngine { line in
+        output.yield(line)
+    }
+    defer {
+        engine.stop()
+        output.finish()
+    }
+
+    try engine.start()
+    var receivedUCI = false
+
+    for await line in lines {
+        print(line)
+        if line.hasPrefix("info string ArasanEmbedded error")
+            || line.hasPrefix("bestmove ") {
+            break
+        }
+        if line == "uciok" {
+            receivedUCI = true
+        } else if line == "readyok" && receivedUCI {
+            engine.sendCommand("position startpos")
+            engine.sendCommand("go depth 8")
+        }
+    }
 }
-
-try engine.start()
-engine.sendCommand("position startpos moves e2e4")
-engine.sendCommand("go depth 8")
-
-// After the line handler receives `bestmove ...`:
-engine.stop()
 ```
 
-Starting an engine sends `uci`, applies its resource options, and then sends
-`isready`. A production client should wait for both `uciok` and `readyok`
-before beginning a search.
-
-Set the position with `position startpos` or a valid `position fen ...`
-command before searching. The current engine leaves the previous valid board
-intact when it rejects a malformed FEN. This is a recovery safeguard, not a
-substitute for validating user-provided positions in your app.
-
-> Important: Arasan uses process-global state, so only one engine may be
-> active in a process. Output arrives in order on a background serial queue.
-> Dispatch UI work to the main actor, and call the blocking `stop()` method
-> away from the main actor.
+Keep the task handle to cancel it with the owning screen and observe its
+throwing result to report startup errors. An async command-line client uses
+`try await searchTask.value` before exiting. This example has no startup
+deadline; production clients should use timeouts and request attribution as
+shown by SwiftChessDemo.
 
 ## Runtime assets
 
-``ArasanEngine/Configuration`` uses the bundled NNUE network by default and
-leaves opening books and Syzygy tablebases disabled. Apps may opt into an
-Arasan `book.bin` file or a caller-managed Syzygy directory before starting
-the engine. These optional assets are not bundled.
+``ArasanEngine/Configuration`` defaults to the bundled network with opening
+books and tablebases disabled. Custom networks must pass the pinned format/size
+check; keep the file stable through startup. Optional books and Syzygy directories
+are caller-owned and configured before startup.
 
-Use ``ArasanSoakRunner`` for repeated, non-UI engine validation with structured
+Malformed FEN rejection preserves the previous valid board in this snapshot.
+That recovery safeguard does not replace app-level validation of user positions.
+
+## Lifecycle and threading
+
+`start()` validates configuration, launches the engine, and sends UCI setup;
+it does not wait for readiness. Observe `uciok` and `readyok` before searching.
+`isRunning` describes the loop, not readiness. Output is ordered on a serial
+background queue. Dispatch UI work to the main actor and keep blocking teardown
+away from it.
+
+UCI `stop` requests a search's terminal bestmove; wrapper `stop()` shuts down
+the session. It is safe to repeat, and a stopped instance can restart. Arasan
+does not expose Stockfish's state-preserving suspend/resume API. The embedded
+Threads option stays at one; runtime Threads and NNUE-file changes are rejected.
+
+Generate single-line UCI from validated app state. Only one ArasanEngine may
+run within a linked package copy, and the app must serialize Arasan with
+Stockfish because both use process-wide streams. They do not share a
+cross-package native scheduler.
+
+## Reference app and validation
+
+[SwiftChessDemo](https://github.com/Trickfest/SwiftChessDemo) uses both embedded
+engines with SwiftChessTools. See the repository's
+[Examples](https://github.com/Trickfest/ArasanEmbedded/blob/main/Docs/Examples.md),
+[Testing](https://github.com/Trickfest/ArasanEmbedded/blob/main/Docs/Testing.md),
+and [Troubleshooting](https://github.com/Trickfest/ArasanEmbedded/blob/main/Docs/Troubleshooting.md)
+guides. ``ArasanSoakRunner`` provides repeated, non-UI validation with structured
 progress events, timeouts, cancellation, and summary counters.
 
 ## Topics
 
-### Engine lifecycle
+### Engine API
 
 - ``ArasanEngine``
 - ``ArasanEngine/Configuration``

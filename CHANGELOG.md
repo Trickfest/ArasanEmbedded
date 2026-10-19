@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Documentation
+
+- Align README and DocC organization with StockfishEmbedded, make readiness-gated
+  search examples explicit, and add architecture/troubleshooting guides while
+  clarifying current test-gate scope. Public APIs and production/test behavior
+  are unchanged.
+
 ## 1.4.0 - 2026-10-09
 
 ### Changed
