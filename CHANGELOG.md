@@ -2,20 +2,33 @@
 
 ## Unreleased
 
+## 1.5.0 - 2026-10-20
+
+### Changed
+
+- Refresh vendored Arasan to `5d6be86cb74dd51df2b29f7f9e6bcbe95fb1765d`
+  (`v26.1-4-g5d6be86`), updating package-relevant build/release metadata,
+  documentation, and Intel-only SIMD compile-time branching. Upstream
+  opening-book tooling/material is not part of the embedded package update.
+- Retain the current NNUE, Fathom source, embedded stream-input adjustment,
+  package-owned global initializer, and 4 MiB engine-thread stack unchanged.
+- Compare public API compatibility against the released `v1.4.0` baseline.
+
 ### Tests
 
 - Add the same independently authored opening, tactical, promotion, checkmate,
   and stalemate fixtures as StockfishEmbedded, preserving each engine's native
   no-move token and checking search recovery after terminal positions.
 - Run optimized Release tests in the local gate, alongside existing Debug and
-  Thread Sanitizer coverage. Production code and public APIs are unchanged.
+  Thread Sanitizer coverage. These test changes do not alter production code
+  or public APIs.
 
 ### Documentation
 
 - Align README and DocC organization with StockfishEmbedded, make readiness-gated
   search examples explicit, and add architecture/troubleshooting guides while
-  clarifying current test-gate scope. Public APIs and production/test behavior
-  are unchanged.
+  clarifying current test-gate scope. These documentation changes do not alter
+  public APIs or production/test behavior.
 
 ## 1.4.0 - 2026-10-09
 

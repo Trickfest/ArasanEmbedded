@@ -38,7 +38,7 @@ For a manifest-based client, add these entries to its existing manifest:
 dependencies: [
     .package(
         url: "https://github.com/Trickfest/ArasanEmbedded.git",
-        from: "1.4.0"
+        from: "1.5.0"
     ),
 ],
 targets: [
@@ -181,8 +181,8 @@ is optional, manually dispatched, and nonblocking.
 - [Updating Arasan](Docs/UpdatingArasan.md): maintainer update procedure.
 - [Changelog](CHANGELOG.md): package change history.
 
-Current vendored upstream commit: `d013300031c382061d37941ca6acad43cd525145`,
-described by upstream as `v26.0-36-gd0133000`: Arasan 26.0 plus thirty-six
+Current vendored upstream commit: `5d6be86cb74dd51df2b29f7f9e6bcbe95fb1765d`,
+described by upstream as `v26.1-4-g5d6be86`: Arasan 26.1 plus four
 subsequent commits on `master`. The DocC catalog at
 `Sources/ArasanEmbedded/ArasanEmbedded.docc` documents the public Swift API.
 

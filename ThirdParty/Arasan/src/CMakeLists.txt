@@ -1,8 +1,8 @@
-# Copyright 2019-2025 by Jon Dart. All Rights Reserved.
+# Copyright 2019-2026 by Jon Dart. All Rights Reserved.
 cmake_minimum_required(VERSION 3.12 FATAL_ERROR)
 project(arasan)
 
-add_compile_definitions(ARASAN_VERSION=26.0)
+add_compile_definitions(ARASAN_VERSION=26.1)
 set(NETWORK arasanv8-20261005.nnue CACHE STRING "default network file name")
 
 set(CMAKE_VERBOSE_MAKEFILE ON)

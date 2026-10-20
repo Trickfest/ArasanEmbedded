@@ -18,7 +18,7 @@ The script validates the manifest; performs Debug and Release builds; confirms
 Release binaries do not import native assertions; runs Debug, Release, and Thread
 Sanitizer test suites; exercises both CLIs, a child-process startup with a constrained
 stack limit, and invalid-input paths; builds for an iOS simulator and a generic
-iOS device; checks the public API against the configured `v1.3.1` baseline; and
+iOS device; checks the public API against the configured `v1.4.0` baseline; and
 verifies all three required worktree
 license files. On a clean checkout it also checks those licenses inside the
 committed SwiftPM source archive. `swift package archive-source` archives Git

@@ -1,8 +1,8 @@
 # Arasan Makefile for use with NMAKE on the Windows platform
 # Copyright 2004-2026 by Jon Dart. All Rights Reserved.
 #
-VERSION=26.0
-LINK_VERSION=26.0
+VERSION=26.1
+LINK_VERSION=26.1
 #
 #TARGET = win32
 TARGET = win64
@@ -159,8 +159,9 @@ CFLAGS = $(CFLAGS) /std:c++17
 CFLAGS = $(CFLAGS) -march=nehalem
 !Else
 !If "$(BUILD_TYPE)" == "avx512"
-# see https://github.com/llvm/llvm-project/issues/87640
-CFLAGS = $(CFLAGS) -mno-gather
+# re no-gather, see https://github.com/llvm/llvm-project/issues/87640
+# and re vector width, see see https://github.com/llvm/llvm-project/issues/102047
+CFLAGS = $(CFLAGS) -mno-gather -mprefer-vector-width=512
 !Endif
 !Endif
 !Ifndef DEBUG

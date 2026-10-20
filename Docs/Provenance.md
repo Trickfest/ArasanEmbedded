@@ -9,17 +9,20 @@ https://github.com/jdart1/arasan-chess
 Current vendored upstream commit:
 
 ```text
-d013300031c382061d37941ca6acad43cd525145
+5d6be86cb74dd51df2b29f7f9e6bcbe95fb1765d
 ```
 
 Commit message:
 
 ```text
-Simplfy duplicate detection in testMovegen
+Rework book steering file (basic.pgn) to 1) split large PGNs into multiple PGNs that cover distinct lines; 2) consolidate multiple PGNs into one, where possible; 3) ensure that that transpositions do not lead to duplicated and possibly conflicting analysis in multiple places; 4) Resolve conflicting evals due to transposition, using a combination of rules, and where necessary, Stockfish search.
 ```
 
-Upstream describes this snapshot as `v26.0-36-gd0133000`: the Arasan 26.0
-release plus thirty-six subsequent commits on `master`.
+Upstream describes this snapshot as `v26.1-4-g5d6be86`: the Arasan 26.1
+release plus four subsequent commits on `master`. The nine commits since the
+previous vendored snapshot primarily update upstream opening-book tooling and
+release/build metadata. Only package-relevant source and documentation are
+included here; upstream opening-book material is not bundled.
 
 ## Included Upstream Material
 
@@ -100,8 +103,10 @@ upstream failure path from terminating a physical Apple host. The two
 initializers must be reconciled whenever the upstream snapshot changes.
 For this refresh, upstream initialization, cleanup, and thread-stack
 requirements are unchanged; the package's native source list still covers the
-engine entry path. The new NNUE retains the previous byte count and version-8
-header, so the Swift and native format preflight constants are unchanged.
+engine entry path. The bundled NNUE and materialized Fathom source are unchanged
+byte-for-byte, so the Swift and native format preflight constants are unchanged.
+The SIMD source changes use `if constexpr` inside Intel AVX guards and do not
+change the Apple arm64 NEON path.
 
 Package-owned bridge code converts Fathom's otherwise fatal allocation/mapping
 paths into C++ exceptions at the include boundary and catches them on the
