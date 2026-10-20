@@ -31,6 +31,7 @@ if nm -u "$release_bin" | grep '___assert_rtn' >/dev/null; then
 fi
 
 swift test
+swift test -c release
 swift test --sanitize=thread
 swift run arasan-smoke --depth 1
 debug_smoke_bin="$(swift build --show-bin-path)/arasan-smoke"

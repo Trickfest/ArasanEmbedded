@@ -993,6 +993,47 @@ struct ArasanEngineIntegrationTests {
         #expect(bestMove.hasPrefix("bestmove "))
     }
 
+
+    @Test
+    func commonPositionContractIncludesTacticsPromotionMateAndStalemate() async throws {
+        // BEGIN COMMON ENGINE CONTRACT FIXTURES (CC0-1.0)
+        // Independently authored data, not copied from either upstream corpus.
+        // Keep these tuples identical in the other embedded engine's tests.
+        let cases: [(name: String, fen: String, allowed: Set<String>)] = [
+            ("opening-white", "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+             Set("a2a3 a2a4 b2b3 b2b4 c2c3 c2c4 d2d3 d2d4 e2e3 e2e4 f2f3 f2f4 g2g3 g2g4 h2h3 h2h4 b1a3 b1c3 g1f3 g1h3".split(separator: " ").map(String.init))),
+            ("opening-black", "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
+             Set("a7a6 a7a5 b7b6 b7b5 c7c6 c7c5 d7d6 d7d5 e7e6 e7e5 f7f6 f7f5 g7g6 g7g5 h7h6 h7h5 b8a6 b8c6 g8f6 g8h6".split(separator: " ").map(String.init))),
+            ("mate-in-one", "7k/8/5KQ1/8/8/8/8/8 w - - 0 1", ["g6g7"]),
+            ("promotion-mate", "7k/P7/6K1/8/8/8/8/8 w - - 0 1", ["a7a8q", "a7a8r"]),
+            ("checkmate", "7k/6Q1/5K2/8/8/8/8/8 b - - 0 1", []),
+            ("stalemate", "7k/5Q2/6K1/8/8/8/8/8 b - - 0 1", []),
+        ]
+        // END COMMON ENGINE CONTRACT FIXTURES
+        let (engine, stream) = try await startEngine()
+        defer { engine.stop() }
+        // Search the opening again after both terminal positions to prove recovery.
+        for fixture in cases + [cases[0]] {
+            let readyIndex = stream.lineCount
+            engine.sendCommand("ucinewgame")
+            engine.sendCommand("isready")
+            _ = try await stream.waitForLine(prefix: "readyok", after: readyIndex, timeout: .seconds(5))
+            let startIndex = stream.lineCount
+            engine.sendCommand("position fen \(fixture.fen)")
+            engine.sendCommand("go depth 6")
+            let line = try await stream.waitForLine(
+                prefix: "bestmove ", after: startIndex, timeout: .seconds(20)
+            )
+            let move = try #require(Self.bestmoveToken(from: line))
+            if fixture.allowed.isEmpty {
+                #expect(move == "0000", "\(fixture.name): expected Arasan's no-move token, got \(line)")
+            } else {
+                #expect(fixture.allowed.contains(move), "\(fixture.name): unexpected move \(move)")
+            }
+            #expect(stream.allLines().dropFirst(startIndex).filter { $0.hasPrefix("bestmove ") }.count == 1)
+        }
+    }
+
     private func startEngine() async throws -> (ArasanEngine, EngineLineStream) {
         let stream = EngineLineStream()
         let engine = ArasanEngine { line in

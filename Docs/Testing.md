@@ -15,8 +15,8 @@ Scripts/validate.sh
 ```
 
 The script validates the manifest; performs Debug and Release builds; confirms
-Release binaries do not import native assertions; runs the normal and Thread
-Sanitizer suites; exercises both CLIs, a child-process startup with a constrained
+Release binaries do not import native assertions; runs Debug, Release, and Thread
+Sanitizer test suites; exercises both CLIs, a child-process startup with a constrained
 stack limit, and invalid-input paths; builds for an iOS simulator and a generic
 iOS device; checks the public API against the configured `v1.3.1` baseline; and
 verifies all three required worktree
@@ -26,7 +26,6 @@ HEAD rather than dirty/untracked files, so the script explicitly skips that
 archive assertion during pre-commit work. It uses `iPhone 17 Pro` by default;
 set `ARASAN_IOS_SIMULATOR_NAME` to another available simulator when needed.
 
-The gate builds Release but does not currently run `swift test -c release`.
 Its iOS commands are build checks, not on-device XCTest execution. DocC builds
 are separate. Do not count optional Syzygy tests or longer corpus soaks as
 part of the default offline gate.
@@ -66,9 +65,20 @@ These checks use the bundled network and offline fixtures:
 swift package dump-package
 swift build
 swift test
+swift test -c release
 ```
 
 The package tests live in `Tests/ArasanEmbeddedTests`.
+
+`commonPositionContractIncludesTacticsPromotionMateAndStalemate` uses the same
+six independently authored fixtures as StockfishEmbedded: opening positions for
+both sides, mate in one, promotion mate, checkmate, and stalemate. The marked FEN
+and allowed-move data block in the integration test is dedicated to the public
+domain under CC0-1.0, not copied from either upstream corpus. Keep the two blocks
+synchronized. Each search has readiness and fresh-line boundaries; the opening
+is searched again after the terminal positions to prove recovery. Arasan returns
+`0000` for no legal move, while Stockfish returns `(none)`. Do not require their
+ordinary moves, evaluations, timings, or strength to be identical.
 
 `ArasanConfigurationTests.swift` covers wrapper configuration:
 

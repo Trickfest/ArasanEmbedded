@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Tests
+
+- Add the same independently authored opening, tactical, promotion, checkmate,
+  and stalemate fixtures as StockfishEmbedded, preserving each engine's native
+  no-move token and checking search recovery after terminal positions.
+- Run optimized Release tests in the local gate, alongside existing Debug and
+  Thread Sanitizer coverage. Production code and public APIs are unchanged.
+
 ### Documentation
 
 - Align README and DocC organization with StockfishEmbedded, make readiness-gated

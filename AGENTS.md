@@ -31,7 +31,7 @@ Run the complete offline release gate before committing behavior changes:
 Scripts/validate.sh
 ```
 
-The script covers Debug and Release builds, normal and Thread Sanitizer tests,
+The script covers Debug and Release builds/tests, Thread Sanitizer tests,
 CLI smoke/soak validation including constrained-stack startup, iOS simulator
 and generic-device builds, API compatibility against its configured release
 baseline, and license contents.
