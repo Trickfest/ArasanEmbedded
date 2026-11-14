@@ -121,13 +121,31 @@ class Attacks
 #endif
    }
 
-   FORCEINLINE static const Bitboard queenAttacks(Square sq,
-	  				       const Bitboard &occupied) {
-     return (rookAttacks(sq,occupied) & bishopAttacks(sq,occupied));
+   FORCEINLINE static const Bitboard queenAttacks(Square sq, const Bitboard &occupied) {
+       return (rookAttacks(sq, occupied) | bishopAttacks(sq, occupied));
    }
 
-     // Initialize the bitmaps.  Call before using this class.
-     static void init();
+   // Squares attacked by a non-king piece of the given type and color
+   FORCEINLINE static const Bitboard pieceAttacks(PieceType type, ColorType color, Square sq,
+                                                  const Bitboard &occupied) {
+      switch (type) {
+      case Pawn:
+         // pawn_attacks[sq][c] holds the squares from which a pawn of color c attacks sq,
+         // so the squares a pawn of color c attacks are pawn_attacks[sq][!c]
+         return pawn_attacks[sq][OppositeColor(color)];
+      case Knight:
+         return knight_attacks[sq];
+      case Bishop:
+         return bishopAttacks(sq, occupied);
+      case Rook:
+         return rookAttacks(sq, occupied);
+      default:
+         return bishopAttacks(sq, occupied) | rookAttacks(sq, occupied);
+      }
+   }
+
+   // Initialize the bitmaps.  Call before using this class.
+   static void init();
 
  private:
 #if !defined(BMI2) || !defined(_64BIT)

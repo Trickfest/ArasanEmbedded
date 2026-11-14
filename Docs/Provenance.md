@@ -9,20 +9,24 @@ https://github.com/jdart1/arasan-chess
 Current vendored upstream commit:
 
 ```text
-5d6be86cb74dd51df2b29f7f9e6bcbe95fb1765d
+99adddfbc73c4f51c8f9c068439d0844863dd2e9
 ```
 
 Commit message:
 
 ```text
-Rework book steering file (basic.pgn) to 1) split large PGNs into multiple PGNs that cover distinct lines; 2) consolidate multiple PGNs into one, where possible; 3) ensure that that transpositions do not lead to duplicated and possibly conflicting analysis in multiple places; 4) Resolve conflicting evals due to transposition, using a combination of rules, and where necessary, Stockfish search.
+selfplay fixes: 1. fix win adjudication (search score for adjudication was not from the correct POV, so win adjudication never happened). 2. Random and semi-random moves now reset the win adjudication counter. 3. Set the game result when adjudicating. Previously it was left as Result::Unknown, so an adjudicated game would have been discarded.
 ```
 
-Upstream describes this snapshot as `v26.1-4-g5d6be86`: the Arasan 26.1
-release plus four subsequent commits on `master`. The nine commits since the
-previous vendored snapshot primarily update upstream opening-book tooling and
-release/build metadata. Only package-relevant source and documentation are
-included here; upstream opening-book material is not bundled.
+Upstream describes this snapshot as `v26.1-49-g99adddf`. The forty-five commits
+since our previous snapshot introduce pawn-pair and threat features, version-11
+compressed network weights and Apple-arm64 NEON optimizations. The package
+includes matching engine feature sources and its required network; upstream
+training and selfplay tools are not package products.
+
+The upstream entry point, global initialization/cleanup, required 4 MiB thread
+stack and Fathom revision are unchanged from the previous snapshot. The existing
+package-owned startup replacement and stream-input integration remain in place.
 
 ## Included Upstream Material
 
@@ -38,15 +42,15 @@ The vendored copy under `ThirdParty/Arasan` includes:
 The package currently bundles this Arasan NNUE file as a SwiftPM resource:
 
 ```text
-ThirdParty/Arasan/network/arasanv8-20261005.nnue
+ThirdParty/Arasan/network/arasanv11-20261105.nnue
 ```
 
 Its checked-in identity is:
 
 ```text
-Byte count: 25024576
-SHA-256: 1f98bc6c1ac615646d66d409e138225c56765ad0c1065f1ce20a22a56c631927
-Format header: 41 52 41 08 (ARA plus version 8)
+Byte count: 36367668
+SHA-256: cf48f3ff5dced6166d3bc49b7bb54e4d7bb9b0543b2747baefeda7679bfaee6d
+Format header: 41 52 41 0b (ARA plus version 11)
 ```
 
 `Scripts/validate.sh` pins and verifies all three values before building so an
@@ -102,11 +106,11 @@ package-owned embedded entry point instead calls
 upstream failure path from terminating a physical Apple host. The two
 initializers must be reconciled whenever the upstream snapshot changes.
 For this refresh, upstream initialization, cleanup, and thread-stack
-requirements are unchanged; the package's native source list still covers the
-engine entry path. The bundled NNUE and materialized Fathom source are unchanged
-byte-for-byte, so the Swift and native format preflight constants are unchanged.
-The SIMD source changes use `if constexpr` inside Intel AVX guards and do not
-change the Apple arm64 NEON path.
+requirements are unchanged. The package source list now includes the pawn-pair
+and threat-feature implementations. The bundled NNUE and both Swift/native
+preflights advance together to version 11, including its compressed-weight
+format. Upstream NEON accumulator and dot-product optimizations remain unmodified.
+The materialized Fathom source is unchanged byte-for-byte.
 
 Package-owned bridge code converts Fathom's otherwise fatal allocation/mapping
 paths into C++ exceptions at the include boundary and catches them on the

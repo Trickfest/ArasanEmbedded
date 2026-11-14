@@ -40,6 +40,8 @@ let arasanCoreSources = [
     "ThirdParty/Arasan/src/threadp.cpp",
     "ThirdParty/Arasan/src/threadc.cpp",
     "ThirdParty/Arasan/src/evaluate.cpp",
+    "ThirdParty/Arasan/src/nnue/features/ppfeature.cpp",
+    "ThirdParty/Arasan/src/nnue/features/threatfeature.cpp",
     "ThirdParty/Arasan/src/syzygy.cpp",
 ]
 
@@ -82,8 +84,8 @@ let package = Package(
                 .define("SIMD"),
                 .define("NEON"),
                 .define("ARASAN_EMBEDDED_STREAM_INPUT"),
-                .define("ARASAN_VERSION", to: "embedded-master-5d6be86c"),
-                .define("NETWORK", to: "arasanv8-20261005.nnue"),
+                .define("ARASAN_VERSION", to: "embedded-master-99adddfb"),
+                .define("NETWORK", to: "arasanv11-20261105.nnue"),
                 .define(
                     "_LIBCPP_HARDENING_MODE",
                     to: "_LIBCPP_HARDENING_MODE_DEBUG",
@@ -99,7 +101,7 @@ let package = Package(
             name: "ArasanEmbedded",
             dependencies: ["CArasanEmbedded"],
             resources: [
-                .copy("../../ThirdParty/Arasan/network/arasanv8-20261005.nnue"),
+                .copy("../../ThirdParty/Arasan/network/arasanv11-20261105.nnue"),
             ]
         ),
         .executableTarget(

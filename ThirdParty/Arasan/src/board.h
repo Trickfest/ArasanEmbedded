@@ -13,10 +13,10 @@
 #ifdef SIMD
 #include "nnue/simd.h"
 #endif
+#include <array>
 namespace nnue {
     #include "nnue/nndefs.h"
 }
-#include <array>
 #include <functional>
 
 struct NodeInfo;
@@ -322,8 +322,7 @@ public:
    const Bitboard bishopAttacks(Square sq, ColorType c) const;
 
    FORCEINLINE const Bitboard queenAttacks(Square sq) const {
-     return Attacks::rookAttacks(sq, allOccupied) |
-         Attacks::bishopAttacks(sq, allOccupied);
+     return Attacks::queenAttacks(sq, allOccupied);
    }
 
    FORCEINLINE Bitboard fileAttacks(Square sq) const {

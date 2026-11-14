@@ -26,7 +26,7 @@ namespace {
 
 constexpr std::size_t kMaximumCommandBytes = 1024 * 1024;
 constexpr std::size_t kRequiredEngineStackBytes = 4 * 1024 * 1024;
-constexpr std::size_t kRequiredNNUEBytes = 25'024'576;
+constexpr std::size_t kRequiredNNUEBytes = 36'367'668;
 constexpr char kCanonicalNNUEOptionPrefix[] = "setoption name NNUE file value ";
 char kCallbackQueueSpecificKey;
 
@@ -141,7 +141,7 @@ bool validateStartupNNUEOption(const std::string &command, std::string &reason) 
     char header[4] {};
     input.read(header, sizeof(header));
     if (!input || header[0] != 'A' || header[1] != 'R' ||
-        header[2] != 'A' || static_cast<unsigned char>(header[3]) != 0x08) {
+        header[2] != 'A' || static_cast<unsigned char>(header[3]) != 0x0B) {
         reason = "startup NNUE file is missing or incompatible";
         return false;
     }

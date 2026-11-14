@@ -1,4 +1,4 @@
-// Copyright 2021-2025 by Jon Dart. All Rights Reserved.
+// Copyright 2021-2026 by Jon Dart. All Rights Reserved.
 
 #include "nnue.h"
 #include "evaluate.h"
@@ -22,19 +22,26 @@ template <unsigned count> static void bulkCopy(const Bitboard *src, Bitboard *de
 }
 
 #ifdef NNUE_TRACE
-static void printIndices(const nnue::IndexArray &indices) {
+static void printIndices(const nnue::PSQIndexArray &indices) {
     unsigned i = 0;
     unsigned index;
     while ((index  = indices[i++]) != nnue::LAST_INDEX) {
-        assert(i<nnue::MAX_INDICES);
+        assert(i<nnue::MAX_PSQ_INDICES);
         if (i != 1) std::cout << ' ';
         std::cout << index;
     }
     std::cout << std::endl;
 }
-#endif
 
-#define USE_FINNY
+// print the first "count" pawn pair feature indices
+static void printPairIndices(const nnue::PPIndexArray &indices, size_t count) {
+    for (size_t i = 0; i < count; ++i) {
+        if (i) std::cout << ' ';
+        std::cout << indices[i];
+    }
+    std::cout << std::endl;
+}
+#endif
 
 void nnue::Evaluator::clearCache() {
     for (unsigned i = 0; i < 2; i++) { // sides
@@ -50,13 +57,13 @@ void nnue::Evaluator::clearCache() {
     }
 }
 
-size_t nnue::Evaluator::getIndices(ColorType kside, const Board &board, IndexArray &out) {
+size_t nnue::Evaluator::getIndices(ColorType kside, const Board &board, PSQIndexArray &out) {
     Bitboard bits(board.allOccupied);
     Square sq;
     auto it = out.begin();
     while (bits.iterate(sq)) {
         const Piece &piece = board[sq];
-        *it++ = Network::getIndex(kside, board.kingSquare(kside), piece, sq);
+        *it++ = Network::getPSQIndex(kside, board.kingSquare(kside), piece, sq);
     }
     *it = LAST_INDEX;
 #ifdef NNUE_TRACE
@@ -66,7 +73,7 @@ size_t nnue::Evaluator::getIndices(ColorType kside, const Board &board, IndexArr
     return it - out.begin();
 }
 
-size_t nnue::Evaluator::getIndices(ColorType kside, const Occupancies &occupancies, IndexArray &out) {
+size_t nnue::Evaluator::getIndices(ColorType kside, const Occupancies &occupancies, PSQIndexArray &out) {
     Square kp = occupancies[King-1][kside].firstOne();
     Square sq;
     auto it = out.begin();
@@ -77,7 +84,7 @@ size_t nnue::Evaluator::getIndices(ColorType kside, const Occupancies &occupanci
                 while (bits.iterate(sq)) {
                     // Note: piece types start at Pawn = 1
                     const Piece piece = MakePiece(static_cast<PieceType>(i + 1), static_cast<ColorType>(j));
-                    *it++ = Network::getIndex(kside, kp, piece, sq);
+                    *it++ = Network::getPSQIndex(kside, kp, piece, sq);
                 }
             }
         }
@@ -88,7 +95,7 @@ size_t nnue::Evaluator::getIndices(ColorType kside, const Occupancies &occupanci
 
 // compute changes indices based on the DirtyState of the current node
 template <ColorType kside>
-void nnue::Evaluator::getChangedIndices(const NodeInfo *node, IndexArray &added, IndexArray &removed,
+void nnue::Evaluator::getChangedIndices(const NodeInfo *node, PSQIndexArray &added, PSQIndexArray &removed,
                                   size_t &added_count, size_t &removed_count) {
     const Square kp = node->kingSquare(kside);
 #ifdef NNUE_TRACE
@@ -100,19 +107,19 @@ void nnue::Evaluator::getChangedIndices(const NodeInfo *node, IndexArray &added,
 #ifdef NNUE_TRACE
             std::cout << "removing" << SquareImage(info.from) << std::endl;
 #endif
-            removed[removed_count++] = Network::getIndex(kside, kp, info.piece, info.from);
+            removed[removed_count++] = Network::getPSQIndex(kside, kp, info.piece, info.from);
         }
         if (info.to != InvalidSquare) {
 #ifdef NNUE_TRACE
             std::cout << "adding" << SquareImage(info.to) << std::endl;
 #endif
-            added[added_count++] = Network::getIndex(kside, kp, info.piece, info.to);
+            added[added_count++] = Network::getPSQIndex(kside, kp, info.piece, info.to);
         }
     }
 }
 
 void nnue::Evaluator::getIndexDiffs(const NodeInfo *source, NodeInfo *target, ColorType c,
-                                    IndexArray &added, IndexArray &removed, size_t &added_count,
+                                    PSQIndexArray &added, PSQIndexArray &removed, size_t &added_count,
                                     size_t &removed_count) {
     // "source" is a position prior to the one for which we want
     // to get a NNUE eval ("target").
@@ -133,16 +140,78 @@ void nnue::Evaluator::getIndexDiffs(const NodeInfo *source, NodeInfo *target, Co
 #endif
 }
 
+// Get all features of a position, for one perspective
+void nnue::Evaluator::getFeatures(const Board &board, ColorType c, FeatureChanges &features) {
+    features.psqAddedCount = getIndices(c, board, features.psqAdded);
+    features.psqRemovedCount = 0;
+    features.ppAddedCount = Network::FeatureXformer::PawnPair::getActivePairs(
+        c, board.kingSquare(c), board.pawn_bits, features.ppAdded);
+    features.ppRemovedCount = 0;
+#ifdef NNUE_TRACE
+    std::cout << "pawn pair indices (" << ColorImage(c) << "):" << std::endl;
+    printPairIndices(features.ppAdded, features.ppAddedCount);
+#endif
+    features.threatAddedCount =
+        Network::FeatureXformer::Threat::getActiveThreats(c, board, features.threatAdded);
+    features.threatRemovedCount = 0;
+}
+
+const nnue::ThreatChanges &nnue::Evaluator::getThreatChanges(const NodeInfo *source,
+                                                              const NodeInfo *target) {
+    ThreatMemo &m = threatMemo;
+    // The nodes are reused, so check that the positions are the same too
+    if (m.source != source || m.target != target ||
+        std::memcmp(m.sourceOccupancies, source->occupancies, sizeof(Occupancies)) != 0 ||
+        std::memcmp(m.targetOccupancies, target->occupancies, sizeof(Occupancies)) != 0) {
+        m.source = source;
+        m.target = target;
+        std::memcpy(m.sourceOccupancies, source->occupancies, sizeof(Occupancies));
+        std::memcpy(m.targetOccupancies, target->occupancies, sizeof(Occupancies));
+        Network::FeatureXformer::Threat::getThreatChanges(source->occupancies, target->occupancies,
+                                                          m.changes);
+    }
+    return m.changes;
+}
+
 // Incremental update of 1/2 of accumulator for the specified color
 void nnue::Evaluator::updateAccumIncremental(const Network &network, const NodeInfo *source,
                                              NodeInfo *target, const ColorType c) {
-    IndexArray added, removed;
-    size_t added_count, removed_count;
-    getIndexDiffs(source, target, c, added, removed, added_count, removed_count);
+    FeatureChanges changes;
+    // As for pawn pairs, threat changes are computed from the positions of the two nodes. The
+    // king is on the same side of the board in both (else we would be refreshing), so the
+    // threat indices are consistent. They are found first, so that the weight rows can be
+    // prefetched while the other changes are computed.
+    {
+        using Threat = Network::FeatureXformer::Threat;
+        const Square ksq = target->kingSquare(c);
+        const ThreatChanges &threats = getThreatChanges(source, target);
+        changes.threatAddedCount =
+            Threat::toIndices(c, ksq, threats.added.data(), threats.addedCount, changes.threatAdded);
+        changes.threatRemovedCount = Threat::toIndices(c, ksq, threats.removed.data(),
+                                                       threats.removedCount, changes.threatRemoved);
+        network.getTransformer()->prefetchThreats(changes);
+    }
+    getIndexDiffs(source, target, c, changes.psqAdded, changes.psqRemoved, changes.psqAddedCount,
+                  changes.psqRemovedCount);
     AccumulatorHalf sourceHalf = Network::AccumulatorType::getHalf(c, source->stm);
     AccumulatorHalf targetHalf = Network::AccumulatorType::getHalf(c, target->stm);
-    network.updateAccum(source->accum, sourceHalf, target->accum, targetHalf, added, added_count,
-                        removed, removed_count);
+    // Pawn pair features depend only on the pawns, so changes are computed from the pawn
+    // bitboards of the two nodes, however many plies apart they are. Nothing to do if the
+    // pawns are the same. Pair indices depend on whether the king is on files e-h, but if
+    // that changed we would be refreshing, not updating incrementally.
+    if (source->occupancies[0][White] != target->occupancies[0][White] ||
+        source->occupancies[0][Black] != target->occupancies[0][Black]) {
+        Network::FeatureXformer::PawnPair::getPairDeltas(
+            c, target->kingSquare(c), source->occupancies[0], target->occupancies[0],
+            changes.ppAdded, changes.ppAddedCount, changes.ppRemoved, changes.ppRemovedCount);
+#ifdef NNUE_TRACE
+        std::cout << "pawn pair diffs: added" << std::endl;
+        printPairIndices(changes.ppAdded, changes.ppAddedCount);
+        std::cout << "pawn pair diffs: removed" << std::endl;
+        printPairIndices(changes.ppRemoved, changes.ppRemovedCount);
+#endif
+    }
+    network.updateAccum(source->accum, sourceHalf, target->accum, targetHalf, changes);
     target->accum.setState(targetHalf, AccumulatorState::Computed);
 #ifdef NNUE_TRACE
     std::cout << "incremental evaluate" << std::endl;
@@ -154,6 +223,8 @@ void nnue::Evaluator::updateAccumIncremental(const Network &network, const NodeI
 void nnue::Evaluator::updateAccum(const nnue::Network &network, const Board &board, NodeInfo *node,
                                   const ColorType c) {
     assert(node);
+    // record the piece bitboards, for use in later incremental updates
+    bulkCopy<N_COLORS * N_PIECES>(&board.pawn_bits[0], &node->occupancies[0][0]);
     AccumulatorHalf targetHalf = Network::AccumulatorType::getHalf(node->stm, c);
     if (node->accum.getState(targetHalf) == AccumulatorState::Computed) {
         // nothing to do: can happen if we revist a node because we widened the search window
@@ -180,9 +251,11 @@ void nnue::Evaluator::updateAccum(const nnue::Network &network, const Board &boa
         const DirtyState &ds = n->dirty[0];
         if ((dn == 0) ||
             (n ->ply == 0) ||
-            (TypeOfPiece(ds.piece) == King && Network::FeatureXformer::needsRefresh(c, ds.from, ds.to)) ||
+            (TypeOfPiece(ds.piece) == King && ColorOfPiece(ds.piece) == c &&
+             Network::FeatureXformer::PSQ::needsRefresh(c, ds.from, ds.to)) ||
             ((gain -= dn + 1) < 0)) {
-            // previous move was null, or was a King move that invalidates the accumulator,
+            // previous move was null, or was a move of the king of this perspective that
+            // invalidates the accumulator (a move of the other king is an ordinary change),
             // or we can't get any gain from incremental update
             incrementalOk = false;
             break;
@@ -194,14 +267,8 @@ void nnue::Evaluator::updateAccum(const nnue::Network &network, const Board &boa
         // a previous position was found with usable data
         updateAccumIncremental(network, n, node, c);
     } else {
-#ifdef USE_FINNY
-        // update from cache
+        // update from cache (the cache includes pawn pair features)
         finnyUpdate(network, board, node, c, targetHalf);
-#else
-        IndexArray indices;
-        getIndices(c, board, indices);
-        network.updateAccum(indices, targetHalf, node->accum);
-#endif
     }
     node->accum.setState(targetHalf, AccumulatorState::Computed);
 }
@@ -227,10 +294,10 @@ nnue::Network::OutputType nnue::Evaluator::fullEvaluate(const nnue::Network &net
 void nnue::Evaluator::updateAccum(const nnue::Network &network, const Board &board,
                                   nnue::Network::AccumulatorType &accum) {
     for (ColorType color : colors) {
-        IndexArray indices;
-        getIndices(color, board, indices);
+        FeatureChanges features;
+        getFeatures(board, color, features);
         AccumulatorHalf targetHalf = Network::AccumulatorType::getHalf(board.sideToMove(), color);
-        network.updateAccum(indices, targetHalf, accum);
+        network.updateAccum(features, targetHalf, accum);
         accum.setState(targetHalf, AccumulatorState::Computed);
     }
 }
@@ -239,19 +306,18 @@ void nnue::Evaluator::finnyUpdate(const nnue::Network &network, const Board &boa
                                   NodeInfo *node, ColorType side, nnue::AccumulatorHalf targetHalf) {
 
     const Square kp = node->kingSquare(side);
-    FinnyEntry& cacheEntry = finnyTable[side][nnue::Network::FeatureXformer::getKingBucket(side,kp)][File(kp) > 4];
+    FinnyEntry& cacheEntry = finnyTable[side][nnue::Network::FeatureXformer::PSQ::getKingBucket(side,kp)][File(kp) > 4];
     nnue::Network::AccumulatorType &accum = node->accum;
 
     // get the index diffs between the cache entry and our position
-    nnue::IndexArray add, remove;
-    size_t added_count = 0, removed_count = 0;
+    FeatureChanges changes;
 #ifdef NNUE_TRACE
     std::cout << "--- finnyUpdate: incremental eval --" << std::endl;
     std::cout << "base indices (from cache):" << std::endl;
-    IndexArray baseIndices;
+    PSQIndexArray baseIndices;
     getIndices(side, cacheEntry.occupancies, baseIndices);
     printIndices(baseIndices);
-    IndexArray nodeIndices;
+    PSQIndexArray nodeIndices;
     std::cout << "node indices:" << std::endl;
     getIndices(side, board, nodeIndices);
     printIndices(nodeIndices);
@@ -266,32 +332,55 @@ void nnue::Evaluator::finnyUpdate(const nnue::Network &network, const Board &boa
                 PieceType piece = static_cast<PieceType>(i + 1);
                 Square sq;
                 while (added.iterate(sq)) {
-                    add[added_count++] = Network::getIndex(side, kp, MakePiece(piece, color), sq);
+                    changes.psqAdded[changes.psqAddedCount++] = Network::getPSQIndex(side, kp, MakePiece(piece, color), sq);
                 }
                 while (removed.iterate(sq)) {
-                    remove[removed_count++] =
-                        Network::getIndex(side, kp, MakePiece(piece, color), sq);
+                    changes.psqRemoved[changes.psqRemovedCount++] =
+                        Network::getPSQIndex(side, kp, MakePiece(piece, color), sq);
                 }
             }
         }
     }
-    add[added_count] = remove[removed_count] = LAST_INDEX;
+    changes.psqAdded[changes.psqAddedCount] = changes.psqRemoved[changes.psqRemovedCount] = LAST_INDEX;
 #ifdef NNUE_TRACE
     std::cout << "adding:" << std::endl;
-    printIndices(add);
+    printIndices(changes.psqAdded);
     std::cout << "removing:" << std::endl;
-    printIndices(remove);
+    printIndices(changes.psqRemoved);
 #endif
 
+    // The cache entry also includes pawn pair features, for the pawns recorded in its occupancies.
+    // The entry is for a king on one side of the board (a-d or e-h), so pair indices are
+    // consistent between the entry and this position.
+    if (boardOcc[0][White] != cacheEntry.occupancies[0][White] ||
+        boardOcc[0][Black] != cacheEntry.occupancies[0][Black]) {
+        Network::FeatureXformer::PawnPair::getPairDeltas(
+            side, kp, cacheEntry.occupancies[0], boardOcc[0], changes.ppAdded, changes.ppAddedCount,
+            changes.ppRemoved, changes.ppRemovedCount);
+#ifdef NNUE_TRACE
+        std::cout << "pawn pair adding:" << std::endl;
+        printPairIndices(changes.ppAdded, changes.ppAddedCount);
+        std::cout << "pawn pair removing:" << std::endl;
+        printPairIndices(changes.ppRemoved, changes.ppRemovedCount);
+#endif
+    }
+    // We do not try to calculate threat features based on the finny cache, because large diffs
+    // in threats may exist between a cached entry and the current position. We just rebuild the
+    // threat set here.
+    FeatureChanges threats;
+    threats.threatAddedCount = Network::FeatureXformer::Threat::getActiveThreats(
+        side, kp, boardOcc, threats.threatAdded);
+    network.getTransformer()->prefetchThreats(threats);
     // update the cache entry's accumulator, based on the index diffs. We always use the lower half
     // of the cache's accumulator.
-    network.updateAccum(cacheEntry.acc, AccumulatorHalf::Lower, cacheEntry.acc, AccumulatorHalf::Lower, add, added_count,
-                        remove, removed_count);
+    network.updateAccum(cacheEntry.acc, AccumulatorHalf::Lower, cacheEntry.acc, AccumulatorHalf::Lower,
+                        changes);
     // update occupancy data in the cache to match the computed accumulator
     // cacheEntry.occupancies = node->occupancies;
     bulkCopy<N_COLORS * N_PIECES>(reinterpret_cast<const Bitboard *>(&boardOcc),
                                   reinterpret_cast<Bitboard *>(&cacheEntry.occupancies));
-    // update node accumulator with newly computed data from the cache
-    accum.copy_half(targetHalf, cacheEntry.acc, AccumulatorHalf::Lower);
+    // The node's accumulator is the cache entry's, plus all the threat features. The update has
+    // separate source and target, so this does not need a separate copy of the accumulator.
+    network.updateAccum(cacheEntry.acc, AccumulatorHalf::Lower, accum, targetHalf, threats);
     accum.setState(targetHalf, AccumulatorState::Computed);
 }

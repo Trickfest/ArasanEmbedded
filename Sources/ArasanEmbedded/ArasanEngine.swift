@@ -149,7 +149,7 @@ public extension ArasanEngine {
     /// The bundled Arasan NNUE network URL.
     static var defaultNNUEURL: URL {
         guard let url = Bundle.module.url(
-            forResource: "arasanv8-20261005",
+            forResource: "arasanv11-20261105",
             withExtension: "nnue"
         ) else {
             preconditionFailure("Bundled Arasan NNUE resource is missing.")
@@ -269,8 +269,8 @@ enum ArasanConfigurationValidationError: Swift.Error, Equatable, LocalizedError 
 }
 
 private extension URL {
-    static let arasanNNUEByteCount = 25_024_576
-    static let arasanNNUEHeader = Data([0x41, 0x52, 0x41, 0x08])
+    static let arasanNNUEByteCount = 36_367_668
+    static let arasanNNUEHeader = Data([0x41, 0x52, 0x41, 0x0B])
 
     var isExistingFile: Bool {
         var isDirectory = ObjCBool(false)

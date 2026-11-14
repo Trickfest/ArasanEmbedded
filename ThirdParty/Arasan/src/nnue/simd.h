@@ -5,7 +5,21 @@
 #include "simddefs.h"
 #include "../bitutil.h"
 
+#include <type_traits>
+
 namespace simd {
+
+// Prefetch the cache line containing an address
+FORCEINLINE void prefetch(const void *address) {
+#if defined(_MSC_VER) && (defined(_M_X64) || defined(_M_IX86))
+    _mm_prefetch(reinterpret_cast<const char *>(address), _MM_HINT_T0);
+#elif defined(__GNUC__) || defined(__clang__)
+    __builtin_prefetch(address);
+#else
+    // no prefetch (for example MSVC on ARM)
+    (void)address;
+#endif
+}
 
 template <typename T, unsigned simdWidth> inline static constexpr size_t chunks(unsigned len) {
     return (len * 8 * sizeof(T)) / simdWidth;
@@ -91,15 +105,94 @@ template <size_t size, typename DataType> FORCEINLINE void vec_copy(const DataTy
     }
 }
 
+// A set of weight rows to add to and subtract from an accumulator. Several of these, with
+// different weights (for example piece-square features and 8-bit pair or threat features),
+// can be applied in one pass over the accumulator: see updateRows.
+template <typename WeightType, size_t rowCount, size_t outputSize> struct RowUpdate {
+    static constexpr size_t rows = rowCount;
+    const WeightType (&weights)[rowCount][outputSize];
+    const unsigned *added;
+    size_t addedCount;
+    const unsigned *removed;
+    size_t removedCount;
+};
+
+template <typename WeightType, size_t rowCount, size_t outputSize>
+RowUpdate<WeightType, rowCount, outputSize>
+makeRowUpdate(const WeightType (&weights)[rowCount][outputSize], const unsigned *added,
+              size_t addedCount, const unsigned *removed, size_t removedCount) {
+    return {weights, added, addedCount, removed, removedCount};
+}
+
 #ifdef NEON
 
-template <typename vec_type, typename AccumType, typename WeightType, size_t inputSize /* features */,
-          size_t outputSize /* accumulator size */, size_t regCount, size_t regWidth,
-          size_t iterations, typename operations>
-inline void updateLoopNeon(const AccumType *source, AccumType *target,
-                           const WeightType (&weights)[inputSize][outputSize],
-                           const unsigned *added, size_t added_count, const unsigned *removed,
-                           size_t removed_count, size_t &offset) {
+// Add (or subtract) rows of 8-bit weights, widened to 16 bits, to the registers holding a tile of
+// the accumulator. "offset" is the index of the first register of the tile, in units of
+// registers of the accumulator.
+template <bool add, typename vec_type, typename operations, size_t regCount, typename WeightType,
+          size_t inputSize, size_t outputSize>
+FORCEINLINE void applyWidenedRowsNeon(vec_type (&regs)[regCount],
+                                      const WeightType (&weights)[inputSize][outputSize],
+                                      const unsigned *indices, size_t count, size_t offset) {
+    // number of weights per register: one per 16-bit lane
+    constexpr size_t lanes = simdWidth / 16;
+    for (size_t i = 0; i < count; ++i) {
+        const int8_t *w = reinterpret_cast<const int8_t *>(weights[indices[i]]) + offset * lanes;
+        size_t j = 0;
+        // two registers at a time, with one 128-bit load
+        for (; j + 1 < regCount; j += 2) {
+            if constexpr (add)
+                operations::addWiden2(regs[j], regs[j + 1], w + j * lanes);
+            else
+                operations::subWiden2(regs[j], regs[j + 1], w + j * lanes);
+        }
+        if (j < regCount) {
+            if constexpr (add)
+                regs[j] = operations::addWiden(regs[j], w + j * lanes);
+            else
+                regs[j] = operations::subWiden(regs[j], w + j * lanes);
+        }
+    }
+}
+
+// Apply a RowUpdate to the registers holding a tile of the accumulator
+template <typename vec_type, typename AccumType, typename operations, size_t regCount,
+          typename Update>
+FORCEINLINE void applyRowUpdateNeon(vec_type (&regs)[regCount], const Update &update,
+                                    size_t offset) {
+    using WeightType = std::remove_cv_t<std::remove_reference_t<decltype(update.weights[0][0])>>;
+    constexpr size_t indexMultiplier = simdWidth / (8 * sizeof(AccumType));
+    constexpr bool widen = sizeof(WeightType) < sizeof(AccumType);
+    static_assert(!widen || (sizeof(WeightType) == 1 && sizeof(AccumType) == 2),
+                  "only widening of 8-bit weights to 16 bits is supported");
+    if constexpr (widen) {
+        // 8-bit weights are widened to 16 bits as they are added
+        applyWidenedRowsNeon<true, vec_type, operations, regCount>(
+            regs, update.weights, update.added, update.addedCount, offset);
+        applyWidenedRowsNeon<false, vec_type, operations, regCount>(
+            regs, update.weights, update.removed, update.removedCount, offset);
+    } else {
+        for (size_t i = 0; i < update.addedCount; ++i) {
+            const auto *w = update.weights[update.added[i]];
+            for (size_t j = 0; j < regCount; ++j) {
+                regs[j] =
+                    operations::add(regs[j], operations::load(w + indexMultiplier * (offset + j)));
+            }
+        }
+        for (size_t i = 0; i < update.removedCount; ++i) {
+            const auto *w = update.weights[update.removed[i]];
+            for (size_t j = 0; j < regCount; ++j) {
+                regs[j] =
+                    operations::sub(regs[j], operations::load(w + indexMultiplier * (offset + j)));
+            }
+        }
+    }
+}
+
+template <typename vec_type, typename AccumType, size_t regCount, size_t iterations,
+          typename operations, typename... Updates>
+inline void updateRowsLoopNeon(const AccumType *source, AccumType *target, size_t &offset,
+                               const Updates &...updates) {
     constexpr size_t indexMultiplier = simdWidth / (8 * sizeof(AccumType));
     alignas(VEC_ALIGN) vec_type regs[regCount];
     for (size_t iter = 0; iter < iterations; ++iter, offset += regCount) {
@@ -107,21 +200,8 @@ inline void updateLoopNeon(const AccumType *source, AccumType *target,
         for (size_t i = 0; i < regCount; ++i) {
             regs[i] = operations::load(source + indexMultiplier * (offset + i));
         }
-        // perform updates in registers
-        for (size_t i = 0; i < added_count; ++i) {
-            const auto *w = weights[added[i]];
-            for (size_t j = 0; j < regCount; ++j) {
-                regs[j] =
-                    operations::add(regs[j], operations::load(w + indexMultiplier * (offset + j)));
-            }
-        }
-        for (size_t i = 0; i < removed_count; ++i) {
-            const auto *w = weights[removed[i]];
-            for (size_t j = 0; j < regCount; ++j) {
-                regs[j] =
-                    operations::sub(regs[j], operations::load(w + indexMultiplier * (offset + j)));
-            }
-        }
+        // perform all updates in registers
+        (applyRowUpdateNeon<vec_type, AccumType, operations, regCount>(regs, updates, offset), ...);
         // store results to memory
         for (size_t i = 0; i < regCount; ++i) {
             operations::store(target + indexMultiplier * (offset + i), regs[i]);
@@ -129,53 +209,123 @@ inline void updateLoopNeon(const AccumType *source, AccumType *target,
     }
 }
 
-template <typename vec_type, typename AccumType, typename WeightType, typename BiasType,
-          size_t inputSize /* features */, size_t outputSize /* accumulator size */,
-          size_t regCount, size_t regWidth, size_t iterations, typename operations>
-FORCEINLINE void
-fullUpdateLoopNeon(AccumType *target, const WeightType (*weights)[inputSize][outputSize],
-                   const BiasType (*biases)[outputSize], const unsigned *indices, size_t &offset) {
+// NEON implementation of updateRows: update an accumulator (or half of one) in one pass, with
+// all the row sets applied to each tile of the accumulator while it is held in registers (see
+// updateRowsX86).
+template <typename AccumType, size_t outputSize /* accumulator size */, typename... Updates>
+void updateRowsNeon(const AccumType *source, AccumType *target, const Updates &...updates) {
+    static_assert(sizeof(AccumType) == 2 || sizeof(AccumType) == 4, "unsupported accumulator type");
     static_assert(outputSize * sizeof(AccumType) * 8 >= simdWidth,
                   "insufficient accumulator width");
     static_assert(outputSize * sizeof(AccumType) * 8 % simdWidth == 0,
                   "accumulator size is not multiple of SIMD width");
-    constexpr size_t indexMultipler = simdWidth / (8 * sizeof(AccumType));
-    alignas(VEC_ALIGN) vec_type regs[regCount];
-    for (size_t iter = 0; iter < iterations; ++iter, offset += regCount) {
-        // load biases into registers
-        if (biases) {
-            for (size_t i = 0; i < regCount; ++i) {
-                regs[i] = operations::load((*biases) + indexMultipler * (offset + i));
-            }
-        } else {
-            for (size_t i = 0; i < regCount; ++i) {
-                regs[i] = operations::zero();
-            }
-        }
-        // perform updates in registers
-        for (size_t i = 0; indices[i] != 1000000; ++i) {
-            const auto w = (*weights)[indices[i]];
-            for (size_t j = 0; j < regCount; ++j) {
-                regs[j] =
-                    operations::add(regs[j], operations::load(w + indexMultipler * (offset + j)));
-            }
-        }
-        // store results to memory
-        for (size_t i = 0; i < regCount; ++i) {
-            operations::store(target + indexMultipler * (offset + i), regs[i]);
-        }
+    size_t offset = 0;
+    constexpr size_t registerWidths = chunks<AccumType, simdWidth>(outputSize);
+    // The number of registers in a tile of the accumulator. aarch64 has 32 vector registers, so
+    // a tile this large does not stay entirely in registers, but a larger tile is faster: there
+    // are fewer passes over the row lists and more contiguous weight data per row for each tile.
+    // Measured with the bench on an Apple M1 (accumulator half of 1024 values, fused update),
+    // NPS for tiles of 8, 16, 24 and 32 registers: 267K, 287K, 315K and 339K.
+    constexpr size_t regCount = 32;
+    constexpr size_t iterations = registerWidths / regCount;
+    constexpr size_t remaining = registerWidths % regCount;
+    if constexpr (iterations > 0) {
+        if constexpr (sizeof(AccumType) == 2)
+            updateRowsLoopNeon<vec16_t, AccumType, regCount, iterations,
+                               SimdOperationsNeon<vec16_t, AccumType, sizeof(AccumType)>>(
+                source, target, offset, updates...);
+        else
+            updateRowsLoopNeon<vec32_t, AccumType, regCount, iterations,
+                               SimdOperationsNeon<vec32_t, AccumType, sizeof(AccumType)>>(
+                source, target, offset, updates...);
+    }
+    if constexpr (remaining > 0) {
+        if constexpr (sizeof(AccumType) == 2)
+            updateRowsLoopNeon<vec16_t, AccumType, remaining, 1,
+                               SimdOperationsNeon<vec16_t, AccumType, sizeof(AccumType)>>(
+                source, target, offset, updates...);
+        else
+            updateRowsLoopNeon<vec32_t, AccumType, remaining, 1,
+                               SimdOperationsNeon<vec32_t, AccumType, sizeof(AccumType)>>(
+                source, target, offset, updates...);
     }
 }
 
 #else
 
-template <typename vec_type, typename AccumType, typename WeightType,
-          size_t inputSize /* features */, size_t outputSize /* accumulator size */,
-          size_t regCount, size_t regWidth, size_t iterations, size_t bytes>
-inline void updateLoop(const AccumType *source, AccumType *target,
-                       const WeightType (&weights)[inputSize][outputSize], const unsigned *added,
-                       size_t added_count, const unsigned *removed, size_t removed_count,
-                       size_t &offset) {
+// Add (or subtract) rows of 8-bit weights, widened to 16 bits, to the registers holding a
+// tile of the accumulator. "offset" is the index of the first register of the tile, in units
+// of registers of the accumulator.
+template <bool add, typename vec_type, size_t regCount, size_t regWidth, typename WeightType,
+          size_t inputSize, size_t outputSize>
+FORCEINLINE void applyWidenedRows(vec_type (&regs)[regCount],
+                                  const WeightType (&weights)[inputSize][outputSize],
+                                  const unsigned *indices, size_t count, size_t offset) {
+    // number of weights per register: one per 16-bit lane
+    constexpr size_t lanes = regWidth / 16;
+    size_t i = 0;
+#if defined(SSSE3)
+    // With 128-bit registers (and SSSE3, which has maddubs), process two rows at a time
+    if constexpr (regWidth == 128 && regCount % 2 == 0) {
+        for (; i + 1 < count; i += 2) {
+            const int8_t *w0 = reinterpret_cast<const int8_t *>(weights[indices[i]]) + offset * lanes;
+            const int8_t *w1 = reinterpret_cast<const int8_t *>(weights[indices[i + 1]]) + offset * lanes;
+            for (size_t j = 0; j < regCount; j += 2) {
+                if constexpr (add)
+                    vec_add16_i8_pair(regs[j], regs[j + 1], w0 + j * lanes, w1 + j * lanes);
+                else
+                    vec_sub16_i8_pair(regs[j], regs[j + 1], w0 + j * lanes, w1 + j * lanes);
+            }
+        }
+    }
+#endif
+    for (; i < count; ++i) {
+        const int8_t *w = reinterpret_cast<const int8_t *>(weights[indices[i]]) + offset * lanes;
+        for (size_t j = 0; j < regCount; ++j) {
+            if constexpr (add)
+                regs[j] = vec_add16_i8<vec_type>(regs[j], w + j * lanes);
+            else
+                regs[j] = vec_sub16_i8<vec_type>(regs[j], w + j * lanes);
+        }
+    }
+}
+
+// Apply a RowUpdate to the registers holding a tile of the accumulator
+template <typename vec_type, typename AccumType, size_t regCount, size_t regWidth, size_t bytes,
+          typename Update>
+FORCEINLINE void applyRowUpdate(vec_type (&regs)[regCount], const Update &update, size_t offset) {
+    using WeightType = std::remove_cv_t<std::remove_reference_t<decltype(update.weights[0][0])>>;
+    // If the weights are narrower than the accumulator values (8 bits versus 16), they are
+    // widened as they are added to the accumulator.
+    constexpr bool widen = sizeof(WeightType) < sizeof(AccumType);
+    static_assert(!widen || (sizeof(WeightType) == 1 && bytes == 2),
+                  "only widening of 8-bit weights to 16 bits is supported");
+    if constexpr (widen) {
+        applyWidenedRows<true, vec_type, regCount, regWidth>(regs, update.weights, update.added,
+                                                             update.addedCount, offset);
+        applyWidenedRows<false, vec_type, regCount, regWidth>(regs, update.weights, update.removed,
+                                                              update.removedCount, offset);
+    } else {
+        for (size_t i = 0; i < update.addedCount; ++i) {
+            const vec_type *w = reinterpret_cast<const vec_type *>(update.weights[update.added[i]]);
+            for (size_t j = 0; j < regCount; ++j) {
+                regs[j] = vec_add<bytes>(regs[j], w + offset + j);
+            }
+        }
+        for (size_t i = 0; i < update.removedCount; ++i) {
+            const vec_type *w =
+                reinterpret_cast<const vec_type *>(update.weights[update.removed[i]]);
+            for (size_t j = 0; j < regCount; ++j) {
+                regs[j] = vec_sub<bytes>(regs[j], w + offset + j);
+            }
+        }
+    }
+}
+
+template <typename vec_type, typename AccumType, size_t outputSize /* accumulator size */,
+          size_t regCount, size_t regWidth, size_t iterations, size_t bytes, typename... Updates>
+inline void updateRowsLoop(const AccumType *source, AccumType *target, size_t &offset,
+                           const Updates &...updates) {
     static_assert(outputSize * sizeof(AccumType) * 8 >= regWidth, "insufficient accumulator width");
     static_assert(outputSize * sizeof(AccumType) * 8 % regWidth == 0,
                   "accumulator size is not multiple of SIMD register width");
@@ -188,19 +338,8 @@ inline void updateLoop(const AccumType *source, AccumType *target,
         for (size_t i = 0; i < regCount; ++i) {
             regs[i] = vec_load(inp + offset + i);
         }
-        // perform updates in registers
-        for (size_t i = 0; i < added_count; ++i) {
-            const vec_type *w = reinterpret_cast<const vec_type *>(weights[added[i]]);
-            for (size_t j = 0; j < regCount; ++j) {
-                regs[j] = vec_add<bytes>(regs[j], w + offset + j);
-            }
-        }
-        for (size_t i = 0; i < removed_count; ++i) {
-            const vec_type *w = reinterpret_cast<const vec_type *>(weights[removed[i]]);
-            for (size_t j = 0; j < regCount; ++j) {
-                regs[j] = vec_sub<bytes>(regs[j], w + offset + j);
-            }
-        }
+        // perform all updates in registers
+        (applyRowUpdate<vec_type, AccumType, regCount, regWidth, bytes>(regs, updates, offset), ...);
         // store results to memory
         for (size_t i = 0; i < regCount; ++i) {
             vec_store(outp + offset + i, regs[i]);
@@ -208,123 +347,56 @@ inline void updateLoop(const AccumType *source, AccumType *target,
     }
 }
 
-template <typename vec_type, typename AccumType, typename WeightType, typename BiasType,
-          size_t inputSize /* features */, size_t outputSize /* accumulator size */,
-          size_t regCount, size_t regWidth, size_t iterations, size_t bytes>
-inline void fullUpdateLoop(AccumType *target, const WeightType (*weights)[inputSize][outputSize],
-                           const BiasType (*biases)[outputSize], const unsigned *indices,
-                           size_t &offset) {
-    static_assert(outputSize * sizeof(AccumType) * 8 >= regWidth, "insufficient accumulator width");
-    static_assert(outputSize * sizeof(AccumType) * 8 % regWidth == 0,
-                 "accumulator size is not multiple of SIMD width");
-    static_assert(bytes == 2 || bytes == 4);
-    vec_type *outp = reinterpret_cast<vec_type *>(target);
-    alignas(VEC_ALIGN) vec_type regs[regCount];
-    for (size_t iter = 0; iter < iterations; ++iter, offset += regCount) {
-        // load biases into registers
-        if (biases) {
-            const vec_type *biasp = reinterpret_cast<const vec_type *>(*biases);
-            for (size_t i = 0; i < regCount; ++i) {
-                regs[i] = vec_load(biasp + offset + i);
-            }
-        } else {
-            for (size_t i = 0; i < regCount; ++i) {
-                vec_set_zero(regs[i]);
-            }
-        }
-        // perform updates in registers
-        for (size_t i = 0; indices[i] != 1000000; ++i) {
-            const vec_type *w = reinterpret_cast<const vec_type *>((*weights)[indices[i]]);
-            for (size_t j = 0; j < regCount; ++j) {
-                regs[j] = vec_add<bytes>(regs[j], w + offset + j);
-            }
-        }
-        // store results to memory
-        for (size_t i = 0; i < regCount; ++i) {
-            vec_store(outp + offset + i, regs[i]);
-        }
-    }
-}
-
-#endif
-
-template <typename AccumType, typename WeightType, typename BiasType,
-          size_t inputSize /* features */, size_t outputSize /* accumulator size */>
-void fullUpdate(AccumType *target, const WeightType (*weights)[inputSize][outputSize],
-                const BiasType (*biases)[outputSize], const unsigned *indices) {
+// x86 implementation of updateRows: update an accumulator (or half of one) in one pass.
+//
+// All the row sets (piece-square, pawn pair and threat features) are applied in a single
+// pass for performance: each tile of the accumulator is loaded and stored once, rather
+// than once per feature set, and it stays in registers while all the rows are added or
+// subtracted. Stockfish and Integral also apply the piece-square, threat and pawn pair
+// rows in one pass over the accumulator.
+template <typename AccumType, size_t outputSize /* accumulator size */, typename... Updates>
+void updateRowsX86(const AccumType *source, AccumType *target, const Updates &...updates) {
     static_assert(sizeof(AccumType) == 2 || sizeof(AccumType) == 4, "unsupported accumulator type");
-    static_assert(sizeof(AccumType) == sizeof(WeightType),
-                  "AccumType different from WeightType not currently supported");
-    static_assert(sizeof(WeightType) == sizeof(BiasType),
-                  "BiasType different from WeightType not currently supported");
     size_t offset = 0;
-#ifdef NEON
-    constexpr size_t registerWidths = chunks<AccumType, simdWidth>(outputSize);
-    // It is faster here to not reserve all registers for storing intermediate results,
-    // because NEON vector operations except load/store operate on registers only.
-    constexpr size_t regCount = simdRegCount / 2;
-    constexpr size_t iterations = registerWidths / regCount;
-    constexpr size_t remaining = registerWidths % regCount;
-    if constexpr (iterations > 0) {
-        if constexpr (sizeof(AccumType) == 2)
-            fullUpdateLoopNeon<vec16_t, AccumType, WeightType, BiasType, inputSize, outputSize,
-                               regCount, simdWidth, iterations,
-                               SimdOperationsNeon<vec16_t, AccumType, 2>>(target, weights, biases,
-                                                                          indices, offset);
-        else
-            fullUpdateLoopNeon<vec32_t, AccumType, WeightType, BiasType, inputSize, outputSize,
-                               regCount, simdWidth, iterations,
-                               SimdOperationsNeon<vec32_t, AccumType, 4>>(target, weights, biases,
-                                                                          indices, offset);
-    }
-    if constexpr (remaining > 0) {
-        if constexpr (sizeof(AccumType) == 2)
-            fullUpdateLoopNeon<vec16_t, AccumType, WeightType, BiasType, inputSize, outputSize,
-                               remaining, simdWidth, 1, SimdOperationsNeon<vec16_t, AccumType, 2>>(
-                target, weights, biases, indices, offset);
-        else
-            fullUpdateLoopNeon<vec32_t, AccumType, WeightType, BiasType, inputSize, outputSize,
-                               remaining, simdWidth, 1, SimdOperationsNeon<vec32_t, AccumType, 4>>(
-                target, weights, biases, indices, offset);
-    }
-#else
 #if defined(AVX512)
     if constexpr (outputSize * sizeof(AccumType) * 8 < simdWidth) {
+        static_assert(outputSize * sizeof(AccumType) * 8 % 256 == 0,
+                      "expected size to be multiple of 256");
         // special case, fall back to AVX2 because accum is not wide enough for AVX512
-        constexpr size_t registerWidths = chunks<AccumType,256>(outputSize);
+        constexpr size_t registerWidths = chunks<AccumType, 256>(outputSize);
         constexpr size_t iterations = registerWidths / 16;
         constexpr size_t remaining = registerWidths % 16;
         if constexpr (iterations > 0) {
-             fullUpdateLoop<__m256i, AccumType, WeightType, BiasType, inputSize, outputSize, 16,
-                            256, iterations, sizeof(AccumType)>(target, weights, biases, indices, offset);
+            updateRowsLoop<__m256i, AccumType, outputSize, 16, 256, iterations, sizeof(AccumType)>(
+                source, target, offset, updates...);
         }
         if constexpr (remaining > 0) {
-             fullUpdateLoop<__m256i, AccumType, WeightType, BiasType, inputSize, outputSize, remaining,
-                            256, 1, sizeof(AccumType)>(target, weights, biases, indices, offset);
+            updateRowsLoop<__m256i, AccumType, outputSize, remaining, 256, 1, sizeof(AccumType)>(
+                source, target, offset, updates...);
         }
     } else
 #endif
     {
-        // generic x86 code, for AVX512, AVX2 or SSE2
         static_assert(outputSize * sizeof(AccumType) * 8 >= simdWidth,
                       "insufficient accumulator width");
         static_assert(outputSize * sizeof(AccumType) * 8 % simdWidth == 0,
                       "accumulator size is not multiple of SIMD width");
         // how many simdWidth registers are needed to process accumulator
-        constexpr size_t registerWidths = chunks<AccumType,simdWidth>(outputSize);
+        constexpr size_t registerWidths = chunks<AccumType, simdWidth>(outputSize);
         constexpr size_t iterations = registerWidths / simdRegCount;
         constexpr size_t remaining = registerWidths % simdRegCount;
         if constexpr (iterations > 0) {
-             fullUpdateLoop<vec_t, AccumType, WeightType, BiasType, inputSize, outputSize, simdRegCount,
-                            simdWidth, iterations, sizeof(AccumType)>(target, weights, biases, indices, offset);
+            updateRowsLoop<vec_t, AccumType, outputSize, simdRegCount, simdWidth, iterations,
+                           sizeof(AccumType)>(source, target, offset, updates...);
         }
         if constexpr (remaining > 0) {
-                fullUpdateLoop<vec_t, AccumType, WeightType, BiasType, inputSize, outputSize, remaining,
-                               simdWidth, 1, sizeof(AccumType)>(target, weights, biases, indices, offset);
+            updateRowsLoop<vec_t, AccumType, outputSize, remaining, simdWidth, 1,
+                           sizeof(AccumType)>(source, target, offset, updates...);
         }
     }
-#endif
 }
+
+#endif
 
 template <typename vec_type, typename AccumType, typename WeightType,
           size_t inputSize /* features */, size_t outputSize /* accumulator size */,
@@ -365,6 +437,19 @@ inline void updateLoop(const AccumType *source, AccumType *target,
     }
 }
 
+// Update an accumulator (or half of one): copy "source" to "target" (they can be the same),
+// applying the row updates, which are RowUpdate objects (see makeRowUpdate). To update
+// starting from the feature transformer biases, pass the biases as "source". The update is
+// done in one pass over the accumulator.
+template <typename AccumType, size_t outputSize /* accumulator size */, typename... Updates>
+FORCEINLINE void updateRows(const AccumType *source, AccumType *target, const Updates &...updates) {
+#ifdef NEON
+    updateRowsNeon<AccumType, outputSize>(source, target, updates...);
+#else
+    updateRowsX86<AccumType, outputSize>(source, target, updates...);
+#endif
+}
+
 // Incremental update of 1/2 of the accumulator
 template <typename AccumType, typename WeightType, size_t inputSize /* features */,
           size_t outputSize /* accumulator size*/>
@@ -375,82 +460,13 @@ void update(const AccumType *source, AccumType *target,
     // https://github.com/official-stockfish/nnue-pytorch/blob/master/docs/nnue.md
     // outputSize is the size of an accumulator half
     static_assert(sizeof(AccumType) == 2 || sizeof(AccumType) == 4, "unsupported accumulator type");
-    static_assert(sizeof(AccumType) == sizeof(WeightType),
-                  "AccumType different from WeightType not currently supported");
-    size_t offset = 0;
-#ifdef NEON
-    static_assert(outputSize * sizeof(AccumType) * 8 >= simdWidth,
-                  "insufficient accumulator width");
-    static_assert(outputSize * sizeof(AccumType) * 8 % simdWidth == 0,
-                  "accumulator size is not multiple of SIMD width");
-    constexpr size_t registerWidths = chunks<AccumType, simdWidth>(outputSize);
-    // It is faster here to not reserve all registers for storing intermediate results,
-    // because NEON vector operations except load/store operate on registers only.
-    constexpr size_t regCount = simdRegCount / 2;
-    constexpr size_t iterations = registerWidths / regCount;
-    constexpr size_t remaining = registerWidths % regCount;
-    if constexpr (iterations > 0) {
-        if constexpr (sizeof(AccumType)==2)
-            updateLoopNeon<vec16_t, AccumType, WeightType, inputSize, outputSize, regCount, simdWidth,
-                       iterations, SimdOperationsNeon<vec16_t, AccumType, sizeof(AccumType)>>(
-            source, target, weights, added, added_count, removed, removed_count, offset);
-        else
-            updateLoopNeon<vec32_t, AccumType, WeightType, inputSize, outputSize, regCount, simdWidth,
-                       iterations, SimdOperationsNeon<vec32_t, AccumType, sizeof(AccumType)>>(
-            source, target, weights, added, added_count, removed, removed_count, offset);
-    }
-    if constexpr (remaining > 0) {
-        if constexpr (sizeof(AccumType) == 2)
-            updateLoopNeon<vec16_t, AccumType, WeightType, inputSize, outputSize, remaining,
-                           simdWidth, 1, SimdOperationsNeon<vec16_t, AccumType, sizeof(AccumType)>>(
-                source, target, weights, added, added_count, removed, removed_count, offset);
-        else
-            updateLoopNeon<vec32_t, AccumType, WeightType, inputSize, outputSize, remaining,
-                           simdWidth, 1, SimdOperationsNeon<vec32_t, AccumType, sizeof(AccumType)>>(
-                source, target, weights, added, added_count, removed, removed_count, offset);
-    }
-#else
-#if defined(AVX512)
-    if constexpr (outputSize * sizeof(AccumType) * 8 < simdWidth) {
-        static_assert(outputSize * sizeof(AccumType) * 8 % 256 == 0,
-                      "expected size to be multiple of 256");
-        // special case, fall back to AVX2 because accum is not wide enough for AVX512
-        constexpr size_t registerWidths = chunks<AccumType, 256>(outputSize);
-        constexpr size_t iterations = registerWidths / 16;
-        constexpr size_t remaining = registerWidths % 16;
-        if constexpr (iterations > 0) {
-            updateLoop<__m256i, AccumType, WeightType, inputSize, outputSize, 16, 256, iterations,
-                sizeof(AccumType)>(
-                source, target, weights, added, added_count, removed, removed_count, offset);
-        }
-        if constexpr (remaining > 0) {
-            updateLoop<__m256i, AccumType, WeightType, inputSize, outputSize, remaining, 256, 1,
-                       sizeof(AccumType)>(
-                source, target, weights, added, added_count, removed, removed_count, offset);
-        }
-    } else
-#endif
-    {
-        static_assert(outputSize * sizeof(AccumType) * 8 >= simdWidth,
-                      "insufficient accumulator width");
-        static_assert(outputSize * sizeof(AccumType) * 8 % simdWidth == 0,
-                      "accumulator size is not multiple of SIMD width");
-        // how many simdWidth registers are needed to process accumulator
-        constexpr size_t registerWidths = chunks<AccumType, simdWidth>(outputSize);
-        constexpr size_t iterations = registerWidths / simdRegCount;
-        constexpr size_t remaining = registerWidths % simdRegCount;
-        if constexpr (iterations > 0) {
-            updateLoop<vec_t, AccumType, WeightType, inputSize, outputSize, simdRegCount, simdWidth,
-                       iterations, sizeof(AccumType)>(
-                source, target, weights, added, added_count, removed, removed_count, offset);
-        }
-        if constexpr (remaining > 0) {
-            updateLoop<vec_t, AccumType, WeightType, inputSize, outputSize, remaining, simdWidth, 1,
-                       sizeof(AccumType)>(
-                source, target, weights, added, added_count, removed, removed_count, offset);
-        }
-    }
-#endif
+    // 8-bit weights can be used with a 16-bit accumulator: they are widened as they are
+    // added to the accumulator.
+    static_assert(sizeof(AccumType) == sizeof(WeightType) ||
+                      (sizeof(AccumType) == 2 && sizeof(WeightType) == 1),
+                  "AccumType/WeightType combination not supported");
+    updateRows<AccumType, outputSize>(
+        source, target, makeRowUpdate(weights, added, added_count, removed, removed_count));
 }
 
 template <size_t inputSize, size_t roundedInputSize, size_t outputSize, unsigned inputDequantifyShift,

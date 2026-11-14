@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+## 1.6.0 - 2026-11-14
+
+### Changed
+
+- Refresh vendored Arasan to `99adddfbc73c4f51c8f9c068439d0844863dd2e9`
+  (`v26.1-49-g99adddf`), forty-five upstream commits after the previous snapshot.
+- Adopt version-11 pawn-pair/threat-feature inference and compressed weights,
+  bundling `arasanv11-20261105.nnue` in place of the version-8 network. Update
+  both Swift and native asset preflights to the matching size and format header.
+- Compile the new pawn-pair and threat-feature implementation files and retain
+  upstream's Apple-arm64 NEON optimizations. Keep Fathom, the stream-input patch,
+  package-owned global initializer and 4 MiB engine-thread stack unchanged.
+- Compare public API compatibility against the released `v1.5.0` baseline.
+
 ## 1.5.0 - 2026-10-20
 
 ### Changed

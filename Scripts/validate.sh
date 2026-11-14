@@ -3,10 +3,10 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 SIMULATOR_NAME="${ARASAN_IOS_SIMULATOR_NAME:-iPhone 17 Pro}"
-API_BASELINE="${ARASAN_API_BASELINE_TAG:-v1.4.0}"
-NNUE_PATH="ThirdParty/Arasan/network/arasanv8-20261005.nnue"
-NNUE_BYTES=25024576
-NNUE_SHA256="1f98bc6c1ac615646d66d409e138225c56765ad0c1065f1ce20a22a56c631927"
+API_BASELINE="${ARASAN_API_BASELINE_TAG:-v1.5.0}"
+NNUE_PATH="ThirdParty/Arasan/network/arasanv11-20261105.nnue"
+NNUE_BYTES=36367668
+NNUE_SHA256="cf48f3ff5dced6166d3bc49b7bb54e4d7bb9b0543b2747baefeda7679bfaee6d"
 
 cd "$ROOT_DIR"
 
@@ -15,7 +15,7 @@ actual_nnue_sha256="$(shasum -a 256 "$NNUE_PATH" | awk '{print $1}')"
 actual_nnue_header="$(xxd -p -l 4 "$NNUE_PATH")"
 if [[ "$actual_nnue_bytes" != "$NNUE_BYTES" ||
       "$actual_nnue_sha256" != "$NNUE_SHA256" ||
-      "$actual_nnue_header" != "41524108" ]]; then
+      "$actual_nnue_header" != "4152410b" ]]; then
   printf 'Bundled NNUE does not match its pinned size, hash, and format header: %s\n' "$NNUE_PATH" >&2
   exit 1
 fi

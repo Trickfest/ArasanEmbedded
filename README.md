@@ -38,7 +38,7 @@ For a manifest-based client, add these entries to its existing manifest:
 dependencies: [
     .package(
         url: "https://github.com/Trickfest/ArasanEmbedded.git",
-        from: "1.5.0"
+        from: "1.6.0"
     ),
 ],
 targets: [
@@ -60,7 +60,7 @@ another version, use that version's setup instructions.
 
 NNUE stands for *Efficiently Updatable Neural Network*. It is the data Arasan
 uses to evaluate chess positions, not another executable. This snapshot bundles
-`arasanv8-20261005.nnue`, 25,024,576 bytes: roughly 25 MB (24 MiB).
+`arasanv11-20261105.nnue`, 36,367,668 bytes: roughly 36 MB (35 MiB).
 SwiftPM copies it into the package
 resource bundle; you do not add it to your app manually.
 
@@ -181,8 +181,8 @@ is optional, manually dispatched, and nonblocking.
 - [Updating Arasan](Docs/UpdatingArasan.md): maintainer update procedure.
 - [Changelog](CHANGELOG.md): package change history.
 
-Current vendored upstream commit: `5d6be86cb74dd51df2b29f7f9e6bcbe95fb1765d`,
-described by upstream as `v26.1-4-g5d6be86`: Arasan 26.1 plus four
+Current vendored upstream commit: `99adddfbc73c4f51c8f9c068439d0844863dd2e9`,
+described by upstream as `v26.1-49-g99adddf`: Arasan 26.1 plus four
 subsequent commits on `master`. The DocC catalog at
 `Sources/ArasanEmbedded/ArasanEmbedded.docc` documents the public Swift API.
 

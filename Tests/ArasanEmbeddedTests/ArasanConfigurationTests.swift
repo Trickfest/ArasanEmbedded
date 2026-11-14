@@ -54,7 +54,7 @@ struct ArasanConfigurationTests {
     func incompatibleNNUEIsRejectedBeforeEngineStart() throws {
         let url = FileManager.default.temporaryDirectory
             .appending(path: "invalid-\(UUID().uuidString).nnue")
-        try Data([0x41, 0x52, 0x41, 0x08]).write(to: url, options: .atomic)
+        try Data([0x41, 0x52, 0x41, 0x0B]).write(to: url, options: .atomic)
         defer { try? FileManager.default.removeItem(at: url) }
 
         let configuration = ArasanEngine.Configuration(nnueURL: url)
